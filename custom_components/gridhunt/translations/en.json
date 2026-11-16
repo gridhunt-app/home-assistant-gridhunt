@@ -1,0 +1,112 @@
+{
+  "config": {
+    "step": {
+      "user": {
+        "title": "Gridhunt",
+        "description": "How do you want to connect your Gridhunt account?",
+        "menu_options": {
+          "pair": "Pairing code (recommended)",
+          "token": "Paste a token"
+        }
+      },
+      "reauth_confirm": {
+        "title": "Reconnect Gridhunt",
+        "description": "The saved token no longer works. Connect again.",
+        "menu_options": {
+          "pair": "Pairing code (recommended)",
+          "token": "Paste a token"
+        }
+      },
+      "pair": {
+        "title": "Pair with a code",
+        "description": "Leave the address as is unless you were told otherwise.",
+        "data": {
+          "base_url": "Server address"
+        },
+        "data_description": {
+          "base_url": "Leave as is to use the Gridhunt service."
+        }
+      },
+      "pair_wait": {
+        "title": "Approve in Gridhunt",
+        "description": "Open [{verification_url}]({verification_url}) while signed in to Gridhunt and approve code **{user_code}**. Then press Submit here."
+      },
+      "token": {
+        "title": "Paste a token",
+        "description": "Create a token in Gridhunt: Settings, Connections, Home Assistant.",
+        "data": {
+          "token": "Token",
+          "base_url": "Server address"
+        },
+        "data_description": {
+          "base_url": "Leave as is to use the Gridhunt service."
+        }
+      }
+    },
+    "error": {
+      "cannot_connect": "Cannot connect to Gridhunt.",
+      "invalid_auth": "This token is not valid or was revoked.",
+      "authorization_pending": "Not approved yet. Approve the code in Gridhunt, then press Submit.",
+      "code_expired": "The code expired. Start pairing again."
+    },
+    "abort": {
+      "already_configured": "This account is already connected.",
+      "invalid_auth": "This token is not valid or was revoked.",
+      "cannot_connect": "Cannot connect to Gridhunt.",
+      "reauth_successful": "Reconnected successfully."
+    }
+  },
+  "entity": {
+    "binary_sensor": {
+      "riding": {
+        "name": "Riding"
+      }
+    },
+    "sensor": {
+      "progress_pct": {
+        "name": "Route progress"
+      },
+      "distance_done_km": {
+        "name": "Distance done"
+      },
+      "distance_left_km": {
+        "name": "Distance left"
+      },
+      "distance_km": {
+        "name": "Ride distance"
+      },
+      "new_tiles": {
+        "name": "New tiles (this ride)"
+      },
+      "square": {
+        "name": "Square size"
+      },
+      "tiles_total": {
+        "name": "Tiles"
+      },
+      "tiles_this_year": {
+        "name": "New tiles this year"
+      },
+      "last_ride": {
+        "name": "Last ride"
+      }
+    },
+    "device_tracker": {
+      "position": {
+        "name": "Position"
+      }
+    }
+  },
+  "services": {
+    "refresh": {
+      "name": "Refresh",
+      "description": "Fetch fresh data from Gridhunt now.",
+      "fields": {
+        "entry_id": {
+          "name": "Account",
+          "description": "Gridhunt account to refresh. All accounts if empty."
+        }
+      }
+    }
+  }
+}

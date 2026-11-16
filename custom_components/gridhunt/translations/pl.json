@@ -1,0 +1,112 @@
+{
+  "config": {
+    "step": {
+      "user": {
+        "title": "Gridhunt",
+        "description": "Jak chcesz połączyć konto Gridhunt?",
+        "menu_options": {
+          "pair": "Kod parowania (zalecane)",
+          "token": "Wklej token"
+        }
+      },
+      "reauth_confirm": {
+        "title": "Połącz ponownie z Gridhunt",
+        "description": "Zapisany token już nie działa. Połącz konto ponownie.",
+        "menu_options": {
+          "pair": "Kod parowania (zalecane)",
+          "token": "Wklej token"
+        }
+      },
+      "pair": {
+        "title": "Parowanie kodem",
+        "description": "Adres zostaw bez zmian, chyba że wiesz, że ma być inny.",
+        "data": {
+          "base_url": "Adres serwera"
+        },
+        "data_description": {
+          "base_url": "Zostaw bez zmian, aby korzystać z serwisu Gridhunt."
+        }
+      },
+      "pair_wait": {
+        "title": "Zatwierdź w Gridhunt",
+        "description": "Otwórz [{verification_url}]({verification_url}) będąc zalogowanym w Gridhunt i zatwierdź kod **{user_code}**. Potem naciśnij tutaj Wyślij."
+      },
+      "token": {
+        "title": "Wklej token",
+        "description": "Token utworzysz w Gridhunt: Ustawienia, Połączenia, Home Assistant.",
+        "data": {
+          "token": "Token",
+          "base_url": "Adres serwera"
+        },
+        "data_description": {
+          "base_url": "Zostaw bez zmian, aby korzystać z serwisu Gridhunt."
+        }
+      }
+    },
+    "error": {
+      "cannot_connect": "Nie można połączyć się z Gridhunt.",
+      "invalid_auth": "Token jest nieprawidłowy albo został odwołany.",
+      "authorization_pending": "Kod nie jest jeszcze zatwierdzony. Zatwierdź go w Gridhunt i naciśnij Wyślij.",
+      "code_expired": "Kod wygasł. Zacznij parowanie od nowa."
+    },
+    "abort": {
+      "already_configured": "To konto jest już połączone.",
+      "invalid_auth": "Token jest nieprawidłowy albo został odwołany.",
+      "cannot_connect": "Nie można połączyć się z Gridhunt.",
+      "reauth_successful": "Połączono ponownie."
+    }
+  },
+  "entity": {
+    "binary_sensor": {
+      "riding": {
+        "name": "Jazda"
+      }
+    },
+    "sensor": {
+      "progress_pct": {
+        "name": "Postęp trasy"
+      },
+      "distance_done_km": {
+        "name": "Przejechane"
+      },
+      "distance_left_km": {
+        "name": "Do mety"
+      },
+      "distance_km": {
+        "name": "Dystans jazdy"
+      },
+      "new_tiles": {
+        "name": "Nowe kafle (ta jazda)"
+      },
+      "square": {
+        "name": "Bok kwadratu"
+      },
+      "tiles_total": {
+        "name": "Kafle"
+      },
+      "tiles_this_year": {
+        "name": "Nowe kafle w tym roku"
+      },
+      "last_ride": {
+        "name": "Ostatnia jazda"
+      }
+    },
+    "device_tracker": {
+      "position": {
+        "name": "Pozycja"
+      }
+    }
+  },
+  "services": {
+    "refresh": {
+      "name": "Odśwież",
+      "description": "Pobierz teraz świeże dane z Gridhunt.",
+      "fields": {
+        "entry_id": {
+          "name": "Konto",
+          "description": "Konto Gridhunt do odświeżenia. Puste = wszystkie."
+        }
+      }
+    }
+  }
+}

@@ -1,0 +1,5 @@
+# Test requirements, pinned for reproducible runs (Python 3.13).
+# This version of pytest-homeassistant-custom-component pulls in homeassistant==2025.4.0, the oldest release
+# that installs cleanly with the tested API (AddConfigEntryEntitiesCallback first appears in 2025.3.0; the 2025.3.x
+# releases pin the yanked aiohttp 3.11.13). Keep in line with "homeassistant" in hacs.json.
+pytest-homeassistant-custom-component==0.13.232
