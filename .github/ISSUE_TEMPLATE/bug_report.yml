@@ -1,0 +1,55 @@
+name: Bug report
+description: Something in the Gridhunt integration does not work as expected.
+labels: ["bug"]
+body:
+  - type: markdown
+    attributes:
+      value: |
+        Thanks for reporting. Please do not paste tokens, pairing codes or webhook addresses.
+  - type: textarea
+    id: what
+    attributes:
+      label: What happened?
+      description: What did you expect, and what happened instead?
+    validations:
+      required: true
+  - type: textarea
+    id: steps
+    attributes:
+      label: Steps to reproduce
+      placeholder: |
+        1. ...
+        2. ...
+  - type: input
+    id: integration-version
+    attributes:
+      label: Integration version
+      description: Settings, Devices & services, Gridhunt (or manifest.json).
+      placeholder: 0.1.0
+    validations:
+      required: true
+  - type: input
+    id: ha-version
+    attributes:
+      label: Home Assistant version
+      description: Settings, About.
+      placeholder: "2026.11.0"
+    validations:
+      required: true
+  - type: dropdown
+    id: install
+    attributes:
+      label: Installation method
+      options:
+        - HACS
+        - Manual (ZIP from Gridhunt settings)
+        - Manual (copied from GitHub)
+    validations:
+      required: true
+  - type: textarea
+    id: logs
+    attributes:
+      label: Logs
+      description: |
+        Settings, System, Logs, filter by "gridhunt". Remove any tokens before pasting.
+      render: text
