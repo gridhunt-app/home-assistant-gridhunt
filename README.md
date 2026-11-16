@@ -66,6 +66,31 @@ Event data: `routeName`, `kind`, `startedAt`, `endedAt`, `distanceKm`, `progress
 The integration serves `/gridhunt_static/gridhunt-card.js` and loads it automatically.
 Add a card of type `custom:gridhunt-card`.
 
+### Ready-made dashboard (one step)
+
+The same file registers a dashboard strategy and a view strategy that build the full Gridhunt view from your entities
+(live ride, current ride tiles, account tiles; text in your HA language, Polish or English).
+
+- UI: Settings > Dashboards > Add dashboard > Community dashboards > Gridhunt. If the entry is missing, reload the
+  browser page (Ctrl/Cmd+Shift+R) and open the dialog again.
+- YAML (dashboard in raw configuration editor):
+
+```yaml
+strategy:
+  type: custom:gridhunt
+```
+
+- Or just one view inside your own dashboard (view strategies cannot be picked in the editor yet):
+
+```yaml
+views:
+  - strategy:
+      type: custom:gridhunt
+```
+
+With several Gridhunt accounts the view repeats the sections per account; add `device_id: <device id>` under `strategy`
+to limit it to one account. Missing entities are skipped.
+
 ## Privacy
 
 Only public tile data and your own rides are exposed. Points inside privacy zones are cut by the server.

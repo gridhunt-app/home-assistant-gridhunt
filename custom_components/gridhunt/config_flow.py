@@ -5,6 +5,7 @@ from __future__ import annotations
 import hashlib
 from collections.abc import Mapping
 from typing import Any
+from urllib.parse import urlencode
 
 import voluptuous as vol
 from homeassistant.config_entries import ConfigFlow, ConfigFlowResult
@@ -129,6 +130,8 @@ class GridhuntConfigFlow(ConfigFlow, domain=DOMAIN):
             description_placeholders={
                 "user_code": self._user_code,
                 "verification_url": self._verification_url,
+                # QR z adresem zatwierdzenia (GIF z serwera Gridhunt): telefon z zalogowanym Gridhuntem zatwierdza kod
+                "qr_url": f"{self._base_url}/api/ha/pair/qr?{urlencode({'code': self._user_code})}",
             },
             errors=errors,
         )

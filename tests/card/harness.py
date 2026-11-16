@@ -52,8 +52,23 @@ def render(payload: dict[str, Any], *, extra: bool, routes: dict[str, Any] | Non
         text = pg.evaluate("document.getElementById('c').shadowRoot.textContent")
         svg = pg.evaluate("(() => { const s = document.getElementById('c').shadowRoot.querySelector('svg.map'); return s ? s.outerHTML : ''; })()")
         calls = pg.evaluate("window.__calls")
+        shadow = pg.evaluate("document.getElementById('c').shadowRoot.innerHTML")
         out_dir = os.environ.get("GRIDHUNT_CARD_SHOTS")
         if shot and out_dir:
             pg.locator("gridhunt-card").screenshot(path=str(Path(out_dir) / f"{shot}.png"))
         b.close()
-    return {"text": text, "svg": svg, "calls": calls, "errors": errors}
+    return {"text": text, "svg": svg, "calls": calls, "errors": errors, "html": shadow}
+
+
+def evaluate_card(expr: str) -> Any:
+    """Evaluate `expr` in a page with the card script loaded (pure helpers exposed for tests)."""
+    from playwright.sync_api import sync_playwright
+
+    html = "<!doctype html><html><body><script>" + (WWW / "gridhunt-card.js").read_text() + "</script></body></html>"
+    with sync_playwright() as p:
+        b = p.chromium.launch()
+        pg = b.new_page()
+        pg.set_content(html)
+        out = pg.evaluate(expr)
+        b.close()
+    return out

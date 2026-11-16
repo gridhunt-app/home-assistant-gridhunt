@@ -29,7 +29,7 @@
       },
       "pair_wait": {
         "title": "Zatwierdź w Gridhunt",
-        "description": "Otwórz [{verification_url}]({verification_url}) będąc zalogowanym w Gridhunt i zatwierdź kod **{user_code}**. Potem naciśnij tutaj Wyślij."
+        "description": "Zeskanuj kod QR telefonem, na którym jesteś zalogowany w Gridhunt, albo otwórz [{verification_url}]({verification_url}) i zatwierdź kod **{user_code}**. Potem naciśnij tutaj Wyślij.\n\n![QR]({qr_url})"
       },
       "token": {
         "title": "Wklej token",

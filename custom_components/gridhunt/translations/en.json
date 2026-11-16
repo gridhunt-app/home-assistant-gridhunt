@@ -29,7 +29,7 @@
       },
       "pair_wait": {
         "title": "Approve in Gridhunt",
-        "description": "Open [{verification_url}]({verification_url}) while signed in to Gridhunt and approve code **{user_code}**. Then press Submit here."
+        "description": "Scan the QR code with a phone where you're signed in to Gridhunt, or open [{verification_url}]({verification_url}), and approve code **{user_code}**. Then press Submit here.\n\n![QR]({qr_url})"
       },
       "token": {
         "title": "Paste a token",

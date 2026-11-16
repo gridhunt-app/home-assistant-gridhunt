@@ -4,14 +4,18 @@
  *   type: custom:gridhunt-card
  *   entry_id: optional (first Gridhunt entry by default)
  *   map: svg | live-page        (svg = lightweight map drawn in the card; live-page = embedded Gridhunt live page)
+ *   basemap: none               (optional: idle tile map without the MapLibre base map, SVG only)
  *   title: optional
+ *
+ * Strategies (same file): dashboard `strategy: {type: custom:gridhunt}` and view `strategy: {type: custom:gridhunt}`
+ * (optional `device_id` limits the view to one account). Builds the owner's "sections" layout from hass.entities.
  *
  * Data: hass.callWS({type: "gridhunt/card"}) every 20 s (riding) / 60 s (idle); route map: gridhunt/route.
  * Extensions: window.gridhuntCardExtensions = [{ id, title(data, ctx), mapLayers(data, proj, ctx), sections(data, ctx) }]
  * may add map layers and sections (loaded as separate scripts when the account has extra features).
  */
 (() => {
-  const VERSION = "0.1.0";
+  const VERSION = "0.1.9";
   const I18N = {
     en: {
       live: "LIVE", nobody: "Nobody is riding right now", lastRide: "Last ride", done: "ridden", left: "to go", tiles: "new tiles",
@@ -19,7 +23,19 @@
       noSignal: "no signal for {m} min", offRoute: "off route", distance: "distance", progress: "progress", noRoutes: "No saved routes yet.", open: "Open full screen",
       mStarted: "Start", mFinished: "Ride finished", mTiles: "+{n} new tiles", mSquare: "New square {from}×{from} → {to}×{to}", mOff: "Left the route", mBack: "Back on route",
       loading: "Loading…", error: "Gridhunt is not available.", km: "km",
-      allYears: "All", play: "Play", pause: "Pause",
+      play: "Play the selected years", pause: "Pause", allYearsLong: "All years", years: "Years", moreYears: "More years",
+      visited: "Visited", newIn: "New in {y}", record: "Record", position: "Timeline position", stepLabel: "Playback step", speedLabel: "Playback speed",
+      step_day: "Day", step_week: "Week", step_month: "Month", step_quarter: "Quarter", step_year: "Year", quarter: "Q{q} {y}",
+      modeYears: "Only these years", modeCum: "Whole collection", modeYearsHelp: "<b>Only these years</b>: tiles from rides in the selected years.",
+      modeCumHelp: "<b>Whole collection</b>: every tile collected up to the last selected year. With one year, amber shows tiles collected for the first time that year.",
+      tapHelp: "Tap a year to add it. Tap a selected year to keep only that one.",
+      base: "Base map", baseSimple: "Simple", baseDetailed: "Detailed", overlays: "Overlays", ovTiles: "My tiles", ovGoals: "Square and target",
+      kOwned: "visited", kNew: "new in {y}", kSquare: "square", kTarget: "target",
+      gestWin: "Use Ctrl + scroll to zoom the map", gestMac: "Use ⌘ + scroll to zoom the map", gestMobile: "Use two fingers to move the map",
+      sView: "Gridhunt", sLive: "Live ride", sRide: "Current ride", sAccount: "Account", sRiding: "Riding", sRideDistance: "Distance",
+      sDone: "Ridden", sLeft: "To go", sProgress: "Route progress", sNewRide: "New tiles", sTiles: "Tiles", sSquare: "Square",
+      sNewYear: "New this year", sLastRide: "Last ride", sNoData: "No Gridhunt entities found. Add the Gridhunt integration first.",
+      sDesc: "Live ride, tiles and square from Gridhunt in one view.",
     },
     pl: {
       live: "NA ŻYWO", nobody: "Teraz nikt nie jedzie", lastRide: "Ostatnia jazda", done: "przejechane", left: "do mety", tiles: "nowe kafle",
@@ -27,14 +43,26 @@
       noSignal: "brak sygnału od {m} min", offRoute: "poza trasą", distance: "dystans", progress: "postęp", noRoutes: "Nie masz jeszcze zapisanych tras.", open: "Pełny ekran",
       mStarted: "Start", mFinished: "Koniec jazdy", mTiles: "+{n} nowych kafli", mSquare: "Nowy kwadrat {from}×{from} → {to}×{to}", mOff: "Zjazd z trasy", mBack: "Z powrotem na trasie",
       loading: "Wczytywanie…", error: "Gridhunt jest niedostępny.", km: "km",
-      allYears: "Wszystko", play: "Odtwórz", pause: "Pauza",
+      play: "Odtwórz wybrane lata", pause: "Pauza", allYearsLong: "Wszystkie lata", years: "Lata", moreYears: "Więcej lat",
+      visited: "Odwiedzone", newIn: "Nowe w {y}", record: "Rekord", position: "Pozycja osi czasu", stepLabel: "Gradacja odtwarzania", speedLabel: "Prędkość odtwarzania",
+      step_day: "Dzień", step_week: "Tydzień", step_month: "Miesiąc", step_quarter: "Kwartał", step_year: "Rok", quarter: "{r} kw. {y}",
+      modeYears: "Tylko te lata", modeCum: "Cała kolekcja", modeYearsHelp: "<b>Tylko te lata</b>: kafle z jazd w zaznaczonych latach.",
+      modeCumHelp: "<b>Cała kolekcja</b>: wszystkie kafle zdobyte do ostatniego zaznaczonego roku. Przy jednym roku bursztyn pokazuje kafle zdobyte w nim po raz pierwszy.",
+      tapHelp: "Dotknij rok, aby go dodać. Dotknij zaznaczony rok, aby zostawić tylko jego.",
+      base: "Podkład", baseSimple: "Prosty", baseDetailed: "Szczegółowy", overlays: "Nakładki", ovTiles: "Moje kafle", ovGoals: "Kwadrat i cel",
+      kOwned: "zdobyte", kNew: "nowe w {y}", kSquare: "kwadrat", kTarget: "cel",
+      gestWin: "Użyj Ctrl + przewijania, aby przybliżyć mapę", gestMac: "Użyj ⌘ + przewijania, aby przybliżyć mapę", gestMobile: "Przesuń mapę dwoma palcami",
+      sView: "Gridhunt", sLive: "Jazda na żywo", sRide: "Bieżąca jazda", sAccount: "Konto", sRiding: "Jadę", sRideDistance: "Dystans",
+      sDone: "Przejechane", sLeft: "Do mety", sProgress: "Postęp trasy", sNewRide: "Nowe kafle", sTiles: "Kafle", sSquare: "Kwadrat",
+      sNewYear: "Nowe w tym roku", sLastRide: "Ostatnia jazda", sNoData: "Nie znaleziono encji Gridhunt. Najpierw dodaj integrację Gridhunt.",
+      sDesc: "Jazda na żywo, kafle i kwadrat z Gridhunt w jednym widoku.",
     },
   };
   const fmt = (s, o) => String(s).replace(/\{(\w+)\}/g, (_, k) => String(o[k] ?? ""));
   const esc = (s) => String(s ?? "").replace(/[&<>"']/g, (c) => ({ "&": "&amp;", "<": "&lt;", ">": "&gt;", '"': "&quot;", "'": "&#39;" })[c]);
   const Z = 2 ** 14;
   /** Gridhunt mark (variant C, geometry from apps/web/src/lib/brand/mark.tsx, tight frame): tile, current square, target. */
-  const LOGO = '<svg class="logo" viewBox="17 16 67 67" aria-hidden="true"><rect x="18" y="55" width="27" height="27" rx="2" style="fill:var(--gh-mark-tile)"/><path d="M18 41H59V82" style="fill:none;stroke:var(--gh-square);stroke-width:14"/><path d="M18 22.5H77.5V82" style="fill:none;stroke:var(--gh-target);stroke-width:11;stroke-dasharray:22.31 14.88 44.62 14.88 22.31 1000"/></svg>';
+  const LOGO = '<svg class="logo" viewBox="17 16 67 67" aria-hidden="true"><rect x="18" y="55" width="27" height="27" rx="2" style="fill:var(--gh-logo-tile)"/><path d="M18 41H59V82" style="fill:none;stroke:var(--gh-logo-square);stroke-width:14"/><path d="M18 22.5H77.5V82" style="fill:none;stroke:var(--gh-logo-target);stroke-width:11;stroke-dasharray:22.31 14.88 44.62 14.88 22.31 1000"/></svg>';
 
   /** Web Mercator (0..1) and a fit-to-box projection. */
   const merc = (lat, lon) => [(lon + 180) / 360, (1 - Math.log(Math.tan(Math.PI / 4 + (lat * Math.PI) / 360)) / Math.PI) / 2];
@@ -70,6 +98,147 @@
     return `<path class="grid" d="${d}"/>`;
   }
 
+  /* ---- History timeline: port of apps/ios/Sources/Timeline.swift + YearFilter.swift (same as web lib/timeline.ts) ---- */
+  const NEVER = 2147483647;
+  const isLeap = (y) => (y % 4 === 0 && y % 100 !== 0) || y % 400 === 0;
+  const monthLens = (y) => [31, isLeap(y) ? 29 : 28, 31, 30, 31, 30, 31, 31, 30, 31, 30, 31];
+  function todayOf(now = new Date()) {
+    const y = now.getFullYear();
+    return { year: y, doy: Math.round((Date.UTC(y, now.getMonth(), now.getDate()) - Date.UTC(y, 0, 1)) / 864e5) + 1 };
+  }
+  const lastDay = (y, td) => (y === td.year ? td.doy : isLeap(y) ? 366 : 365);
+  const STEPS = ["day", "week", "month", "quarter", "year"];
+  const TL = {
+    total: (ys, td) => ys.reduce((a, y) => a + lastDay(y, td), 0),
+    playhead(pos, ys, td) {
+      let p = Math.max(1, Math.min(pos, TL.total(ys, td)));
+      for (const y of ys) { const n = lastDay(y, td); if (p <= n) return { year: y, doy: p }; p -= n; }
+      const l = ys[ys.length - 1];
+      return l == null ? { year: td.year, doy: 1 } : { year: l, doy: lastDay(l, td) };
+    },
+    positionOf(year, doy, ys, td) {
+      let p = 0;
+      for (const y of ys) { const n = lastDay(y, td); if (y === year) return p + Math.max(1, Math.min(doy, n)); p += n; }
+      return Math.max(1, p);
+    },
+    monthEnd(y, m0) { const L = monthLens(y); let s = 0; for (let m = 0; m <= Math.max(0, Math.min(11, m0)); m++) s += L[m]; return s; },
+    month0(y, doy) { let acc = 0; const L = monthLens(y); for (let m = 0; m < 12; m++) { acc += L[m]; if (doy <= acc) return m; } return 11; },
+    /** Next play position for `step` (each tick closes the current unit, then jumps to the end of the next one). */
+    advance(pos, step, ys, td) {
+      const total = TL.total(ys, td);
+      if (step === "day") return Math.min(total, pos + 1);
+      if (step === "week") return Math.min(total, pos + 7);
+      const ph = TL.playhead(pos, ys, td), yEnd = lastDay(ph.year, td), idx = ys.indexOf(ph.year);
+      const at = (y, d) => TL.positionOf(y, d, ys, td);
+      if (step === "year") {
+        if (ph.doy >= yEnd) { if (idx + 1 < ys.length) { const ny = ys[idx + 1]; return Math.min(total, at(ny, lastDay(ny, td))); } return total; }
+        return Math.min(total, at(ph.year, yEnd));
+      }
+      const m0 = TL.month0(ph.year, ph.doy), unitEnd = step === "month" ? m0 : m0 - (m0 % 3) + 2;
+      const end = Math.min(yEnd, TL.monthEnd(ph.year, unitEnd));
+      if (ph.doy < end) return at(ph.year, end);
+      if (ph.doy >= yEnd) {
+        if (idx + 1 >= ys.length) return total;
+        const ny = ys[idx + 1];
+        return Math.min(total, at(ny, Math.min(lastDay(ny, td), TL.monthEnd(ny, step === "month" ? 0 : 2))));
+      }
+      const nm0 = step === "month" ? m0 + 1 : unitEnd + 1;
+      return at(ph.year, Math.min(yEnd, TL.monthEnd(ph.year, Math.min(11, nm0 + (step === "quarter" ? 2 : 0)))));
+    },
+  };
+  const upperBound = (a, v) => { let lo = 0, hi = a.length; while (lo < hi) { const m = (lo + hi) >> 1; if (a[m] <= v) lo = m + 1; else hi = m; } return lo; };
+  /** Year chip tap (owner rule 2026-09-29, iOS YearFilter.tap): unselected = add, selected = keep only that year. */
+  function tapYear(year, sel, avail) {
+    if (!avail.includes(year)) return sel;
+    if (sel.has(year)) return new Set([year]);
+    return new Set([...sel, year]);
+  }
+  const allSelected = (sel, avail) => avail.length > 0 && avail.every((y) => sel.has(y));
+  /** Tiles of the payload: first visit in history and visits per year. */
+  function tileModel(tm) {
+    const n = (tm.tiles || []).length / 2, firstY = new Int32Array(n), firstD = new Int32Array(n), per = {};
+    for (const [ys, flat] of Object.entries(tm.visits || {})) {
+      const y = Number(ys), idx = [], doy = [];
+      for (let j = 0; j + 1 < flat.length; j += 2) {
+        const i = flat[j], d = flat[j + 1];
+        if (i >= n) continue;
+        idx.push(i); doy.push(d);
+        if (!firstY[i] || y < firstY[i] || (y === firstY[i] && d < firstD[i])) { firstY[i] = y; firstD[i] = d; }
+      }
+      per[y] = { idx, doy };
+    }
+    // neighbour grid for the record square (iOS TileGrid): row order + left / up / up-left
+    const t = tm.tiles, key = (i) => t[2 * i + 1] * Z + t[2 * i], byKey = new Map();
+    for (let i = 0; i < n; i++) byKey.set(key(i), i);
+    const left = new Int32Array(n), up = new Int32Array(n), ul = new Int32Array(n);
+    for (let i = 0; i < n; i++) { const k = key(i); left[i] = byKey.get(k - 1) ?? -1; up[i] = byKey.get(k - Z) ?? -1; ul[i] = byKey.get(k - Z - 1) ?? -1; }
+    const rowOrder = Int32Array.from({ length: n }, (_, i) => i).sort((a, b) => key(a) - key(b));
+    const years = Object.keys(per).map(Number).sort((a, b) => a - b);
+    return { n, tiles: t, firstY, firstD, per, years, left, up, ul, rowOrder };
+  }
+  /** Playback index for (years, mode, today): when each tile enters the selection and when it counts as new (iOS TimelineIndex). */
+  function timelineIndex(m, ys, mode, td) {
+    const newYear = ys.length === 1 && m.years.length && ys[0] > m.years[0] ? ys[0] : null;
+    const total = TL.total(ys, td), segStart = {}, segLen = {};
+    let acc = 0;
+    for (const y of ys) { segStart[y] = acc + 1; segLen[y] = lastDay(y, td); acc += segLen[y]; }
+    const entry = (y, d) => {
+      if (segStart[y] != null && d <= segLen[y]) return segStart[y] + Math.max(1, d) - 1;
+      const ny = ys.find((v) => v > y);
+      return ny != null ? segStart[ny] : NEVER;
+    };
+    const enter = new Int32Array(m.n).fill(NEVER), fresh = new Int32Array(m.n).fill(NEVER);
+    if (newYear != null) for (let i = 0; i < m.n; i++) if (m.firstY[i] === newYear) fresh[i] = entry(newYear, m.firstD[i]);
+    if (mode === "cum") {
+      for (let i = 0; i < m.n; i++) if (m.firstY[i]) enter[i] = entry(m.firstY[i], m.firstD[i]);
+    } else {
+      for (const y of ys) {
+        const p = m.per[y];
+        if (!p) continue;
+        for (let k = 0; k < p.idx.length; k++) {
+          const t = p.idx[k], d = p.doy[k], e = d <= segLen[y] ? segStart[y] + Math.max(1, d) - 1 : entry(y, d);
+          if (e < enter[t]) enter[t] = e;
+        }
+      }
+    }
+    const sortedEnter = Int32Array.from(enter.filter((e) => e !== NEVER)).sort();
+    const sortedFresh = Int32Array.from(fresh.filter((e) => e !== NEVER)).sort();
+    return { ys, newYear, total, enter, fresh, sortedEnter, sortedFresh };
+  }
+  /** Largest fully covered N×N square among tiles with enter ≤ limit (iOS TileGrid.uber). */
+  function uberAt(m, ix, limit) {
+    const dp = new Int32Array(m.n);
+    let best = { s: 0, x: 0, y: 0 };
+    for (const i of m.rowOrder) {
+      if (ix.enter[i] > limit) continue;
+      const l = m.left[i] >= 0 ? dp[m.left[i]] : 0, u = m.up[i] >= 0 ? dp[m.up[i]] : 0, d = m.ul[i] >= 0 ? dp[m.ul[i]] : 0;
+      const s = 1 + Math.min(l, u, d);
+      dp[i] = s;
+      if (s > best.s) best = { s, x: m.tiles[2 * i] - s + 1, y: m.tiles[2 * i + 1] - s + 1 };
+    }
+    return best;
+  }
+  const tileLL = (x, y) => [(x / Z) * 360 - 180, (Math.atan(Math.sinh(Math.PI * (1 - (2 * y) / Z))) * 180) / Math.PI];
+  const boxRing = (x0, y0, x1, y1) => [tileLL(x0, y0), tileLL(x1 + 1, y0), tileLL(x1 + 1, y1 + 1), tileLL(x0, y1 + 1), tileLL(x0, y0)];
+  const ROMAN = ["I", "II", "III", "IV"];
+  const STATIC = "/gridhunt_static";
+  const BASES = { simple: (dark) => `https://tiles.openfreemap.org/styles/${dark ? "dark" : "positron"}`, detailed: () => "https://tiles.openfreemap.org/styles/liberty" };
+  const store = { get(k, d) { try { const v = localStorage.getItem("gridhunt-card." + k); return v == null ? d : JSON.parse(v); } catch { return d; } },
+    set(k, v) { try { localStorage.setItem("gridhunt-card." + k, JSON.stringify(v)); } catch { /* private mode */ } } };
+  let mlPromise = null;
+  /** MapLibre bundled with the integration (www/maplibre); null = no WebGL or not served (card falls back to the SVG map). */
+  function loadMapLibre() {
+    if (!mlPromise) mlPromise = (async () => {
+      const c = document.createElement("canvas");
+      if (!(c.getContext("webgl2") || c.getContext("webgl"))) return null;
+      const [ml, css] = await Promise.all([import(`${STATIC}/maplibre/maplibre-gl.mjs`), fetch(`${STATIC}/maplibre/maplibre-gl.css`).then((r) => (r.ok ? r.text() : ""))]);
+      const lib = ml.default || ml;
+      lib.setWorkerUrl(`${STATIC}/maplibre/maplibre-gl-worker.mjs`);
+      return { lib, css };
+    })().catch(() => null);
+    return mlPromise;
+  }
+
   class GridhuntCard extends HTMLElement {
     setConfig(config) {
       this._config = { map: "svg", ...(config || {}) };
@@ -82,8 +251,8 @@
       this._hass = hass;
       if (first) { this._render(); this._load(); }
     }
-    connectedCallback() { if (this._hass && !this._timer) this._load(); }
-    disconnectedCallback() { clearTimeout(this._timer); this._timer = null; }
+    connectedCallback() { if (this._hass && !this._timer) this._load(); this._fitMap(); }
+    disconnectedCallback() { clearTimeout(this._timer); this._timer = null; if (this._h) this._pause(); }
     get t() {
       const l = String(this._hass?.locale?.language || this._hass?.language || "en").slice(0, 2);
       return I18N[l] || I18N.en;
@@ -135,97 +304,282 @@
         ${me ? `<circle class="me-halo" cx="${me[0].toFixed(1)}" cy="${me[1].toFixed(1)}" r="16"/><circle class="me" cx="${me[0].toFixed(1)}" cy="${me[1].toFixed(1)}" r="8"/>` : ""}
       </svg>`;
     }
-    /** Tile model for the idle map (cached per payload): order of first visits, per-year lists. */
-    _tileModel(tm) {
-      if (this._tmSrc === tm && this._tm) return this._tm;
-      const n = (tm.tiles || []).length / 2, first = new Float64Array(n).fill(Infinity), years = {};
-      for (const [y, flat] of Object.entries(tm.visits || {})) {
-        const list = [];
-        for (let j = 0; j + 1 < flat.length; j += 2) { const i = flat[j], k = Number(y) * 400 + flat[j + 1]; list.push([i, k]); if (k < first[i]) first[i] = k; }
-        years[y] = list;
+    /* ---- Idle map: tiles on a real base map, year filter and history playback like the iOS Map screen ---- */
+    _hist() {
+      if (!this._h) {
+        this._h = { sel: null, mode: "year", step: store.get("step", "quarter"), speed: store.get("speed", 4), pos: Infinity, playing: false,
+          base: store.get("base", "detailed"), ov: store.get("ov", { tiles: true, goals: true }), layers: false, more: false };
+        if (!STEPS.includes(this._h.step)) this._h.step = "quarter";
+        if (![1, 2, 4, 8].includes(this._h.speed)) this._h.speed = 4;
+        if (!BASES[this._h.base]) this._h.base = "detailed";
       }
-      const all = []; for (let i = 0; i < n; i++) all.push([i, isFinite(first[i]) ? first[i] : 0]);
-      all.sort((a, b) => a[1] - b[1]);
-      this._tmSrc = tm;
-      this._tm = { n, first, all, years, list: Object.keys(years).sort().reverse() };
-      return this._tm;
+      return this._h;
     }
-    /** Selection in play order: [[tileIndex, key, isNewThatYear]]; `all` = everything up to now (cumulative). */
-    _tileOrder(tm) {
-      const m = this._tileModel(tm), y = this._tsel && m.years[this._tsel] ? this._tsel : "all";
-      if (y === "all") return { y, rows: m.all.map(([i, k]) => [i, k, false]) };
-      return { y, rows: m.years[y].map(([i, k]) => [i, k, Math.floor(m.first[i] / 400) === Number(y)]) };
+    /** Model (per payload) and playback index (per years / mode / day), cached. */
+    _histIndex() {
+      const tm = this._data && this._data.tiles;
+      if (!tm || !tm.view || !(tm.tiles || []).length) return null;
+      const sig = `${tm.generated}|${tm.tiles.length}|${tm.tiles[0]}|${tm.tiles[tm.tiles.length - 1]}`;
+      if (this._hmSig !== sig) { this._hm = tileModel(tm); this._hmSig = sig; this._ixKey = null; }
+      const m = this._hm, h = this._hist();
+      // keep the selection across reloads (intersection), else all years (iOS YearFilter.reconcile)
+      const kept = h.sel ? m.years.filter((y) => h.sel.has(y)) : [];
+      h.sel = new Set(kept.length ? kept : m.years);
+      const ys = [...h.sel].sort((a, b) => a - b), td = todayOf();
+      const key = `${sig}|${ys.join(",")}|${h.mode}|${td.year}-${td.doy}`;
+      if (this._ixKey !== key) { this._ix = timelineIndex(m, ys, h.mode, td); this._ix.td = td; this._ixKey = key; this._uberCache = null; }
+      return { m, ix: this._ix, tm };
     }
-    /** Largest fully covered N×N square among the first `count` rows (DP on the view grid). */
-    _maxSquare(tm, rows, count) {
-      const v = tm.view, W = v.x1 - v.x0 + 1, H = v.y1 - v.y0 + 1;
-      if (W * H > 600000) return null;
-      const g = new Uint8Array(W * H), t = tm.tiles;
-      for (let r = 0; r < count; r++) { const i = rows[r][0], x = t[2 * i] - v.x0, y = t[2 * i + 1] - v.y0; if (x >= 0 && y >= 0 && x < W && y < H) g[y * W + x] = 1; }
-      const dp = new Uint16Array(W * H); let best = 0, bx = 0, by = 0;
-      for (let y = 0; y < H; y++) for (let x = 0; x < W; x++) {
-        const k = y * W + x; if (!g[k]) continue;
-        const s = x && y ? 1 + Math.min(dp[k - 1], dp[k - W], dp[k - W - 1]) : 1;
-        dp[k] = s; if (s > best) { best = s; bx = x - s + 1; by = y - s + 1; }
-      }
-      return best ? { x: v.x0 + bx, y: v.y0 + by, s: best } : null;
+    _frameOf(m, ix) {
+      const h = this._hist(), total = Math.max(ix.total, 1), pos = Math.max(1, Math.min(h.pos, total));
+      const count = upperBound(ix.sortedEnter, pos), newCount = upperBound(ix.sortedFresh, pos);
+      if (!this._uberCache || this._uberCache.count !== count) this._uberCache = { count, uber: uberAt(m, ix, pos) };
+      return { pos, total, count, newCount, uber: this._uberCache.uber, ph: TL.playhead(pos, ix.ys, ix.td), atEnd: pos >= total };
     }
-    /** Idle map like the web/iOS dashboard: my z14 tiles, current square (gold), active target (green dashed),
-     *  year filter and history playback (no reel export). */
-    _tilesSvg(tm, w = 640) {
-      const v = tm && tm.view;
-      if (!v) return "";
-      const ll = (x, y) => [Math.atan(Math.sinh(Math.PI * (1 - (2 * y) / Z))) * 180 / Math.PI, (x / Z) * 360 - 180];
-      const ar = (v.y1 - v.y0 + 1) / (v.x1 - v.x0 + 1);
-      const h = Math.round(Math.min(480, Math.max(220, w * ar)));
-      const proj = projection([ll(v.x0, v.y0), ll(v.x1 + 1, v.y1 + 1)], w, h, 8);
+    _yearLabel(ys, avail) {
+      if (ys.length === avail.length && ys.length > 1) return this.t.allYearsLong;
+      if (ys.length <= 3) return ys.join(" + ");
+      return `${ys[0]}…${ys[ys.length - 1]} (${ys.length})`;
+    }
+    _phLabel(ph, step) {
+      const lang = this._hass?.locale?.language || undefined, d = new Date(Date.UTC(ph.year, 0, ph.doy));
+      if (step === "year") return String(ph.year);
+      if (step === "quarter") return fmt(this.t.quarter, { q: Math.floor(d.getUTCMonth() / 3) + 1, r: ROMAN[Math.floor(d.getUTCMonth() / 3)], y: ph.year });
+      if (step === "month") return d.toLocaleDateString(lang, { month: "long", year: "numeric", timeZone: "UTC" });
+      return d.toLocaleDateString(lang, { day: "numeric", month: "short", year: "numeric", timeZone: "UTC" });
+    }
+    /** Controls around the map (rebuilt on render); per-tick updates go through _applyFrame. */
+    _histHtml() {
+      const hx = this._histIndex();
+      if (!hx) return "";
+      const { m, ix } = hx, h = this._hist(), t = this.t, fr = this._frameOf(m, ix);
+      const allOn = allSelected(h.sel, m.years), nf = new Intl.NumberFormat(this._hass?.locale?.language || undefined);
+      const chip = (label, on, attr) => `<button class="ychip${on ? " on" : ""}" ${attr} aria-pressed="${on}">${on ? '<span class="ck">✓</span>' : ""}${esc(label)}</button>`;
+      const chips = chip(t.allYearsLong, allOn, 'data-yall="1"') + [...m.years].reverse().map((y) => chip(String(y), h.sel.has(y) && !allOn, `data-year="${y}"`)).join("")
+        + `<button class="ychip more" data-ymore="1" aria-label="${esc(t.moreYears)}">⋯</button>`;
+      const more = h.more ? `<div class="morebox"><div class="seg"><button class="${h.mode === "year" ? "on" : ""}" data-mode="year">${esc(t.modeYears)}</button><button class="${h.mode === "cum" ? "on" : ""}" data-mode="cum">${esc(t.modeCum)}</button></div>
+          <p>${t.modeYearsHelp}</p><p>${t.modeCumHelp}</p><p class="muted">${esc(t.tapHelp)}</p></div>` : "";
+      const baseName = h.base === "simple" ? t.baseSimple : t.baseDetailed;
+      const layers = h.layers ? `<div class="lpanel"><b>${esc(t.base)}</b>
+          ${["simple", "detailed"].map((b) => `<label><input type="radio" name="ghbase" data-base="${b}" ${h.base === b ? "checked" : ""}> ${esc(b === "simple" ? t.baseSimple : t.baseDetailed)}</label>`).join("")}
+          <b>${esc(t.overlays)}</b>
+          <label><input type="checkbox" data-ov="tiles" ${h.ov.tiles ? "checked" : ""}> ${esc(t.ovTiles)}</label>
+          <label><input type="checkbox" data-ov="goals" ${h.ov.goals ? "checked" : ""}> ${esc(t.ovGoals)}</label></div>` : "";
+      const PLAY = '<svg viewBox="0 0 24 24" aria-hidden="true"><path d="M8 5.5v13l10.5-6.5z"/></svg>', PAUSE = '<svg viewBox="0 0 24 24" aria-hidden="true"><path d="M7 5h3.6v14H7zM13.4 5H17v14h-3.6z"/></svg>';
+      this._icons = { PLAY, PAUSE };
+      const steps = STEPS.map((s) => `<option value="${s}" ${s === h.step ? "selected" : ""}>${esc(t["step_" + s])}</option>`).join("");
+      const sw = (cls, label) => `<span class="key"><i class="${cls}"></i>${esc(label)}</span>`;
+      return `<div class="ychips" role="group" aria-label="${esc(t.years)}">${chips}</div>${more}
+        <div class="mapbox hist"><div id="ghmap" class="mapslot">${this._glEl ? "" : this._histSvg(m, ix, fr)}</div>
+          <button class="lchip" data-layers="1" aria-expanded="${h.layers}"><svg viewBox="0 0 24 24" aria-hidden="true"><path d="M12 3 2 8l10 5 10-5zm-7.6 8.2L2 12.4l10 5 10-5-2.4-1.2L12 15zm0 4.4L2 16.8l10 5 10-5-2.4-1.2L12 19.4z"/></svg>${esc(baseName)}</button>${layers}</div>
+        <div class="eyebrow" id="ghlabel">${esc(this._yearLabel(ix.ys, m.years) + " · " + this._phLabel(fr.ph, h.step))}</div>
+        <div class="hstats"><div><b id="ghcount">${esc(nf.format(fr.count))}</b><span>${esc(t.visited)}</span></div>
+          ${ix.newYear ? `<div class="nw"><b id="ghnew">${esc(fr.newCount ? "+" + nf.format(fr.newCount) : "0")}</b><span>${esc(fmt(t.newIn, { y: ix.newYear }))}</span></div>` : ""}
+          <div><b id="ghrec">${esc(fr.uber.s ? fr.uber.s + "×" + fr.uber.s : "–")}</b><span>${esc(t.record)}</span></div></div>
+        <div class="tlbar"><button class="playc" data-tplay="1" aria-label="${esc(h.playing ? t.pause : t.play)}">${h.playing ? PAUSE : PLAY}</button>
+          <input id="ghslider" type="range" min="1" max="${Math.max(fr.total, 2)}" step="1" value="${fr.pos}" aria-label="${esc(t.position)}">
+          <label class="stepsel"><select id="ghstep" aria-label="${esc(t.stepLabel)}">${steps}</select></label>
+          <button class="speed" data-speed="1" aria-label="${esc(t.speedLabel)}">×${h.speed}</button></div>
+        <div class="legend">${sw("k-own", t.kOwned)}${ix.newYear ? sw("k-new", fmt(t.kNew, { y: ix.newYear })) : ""}${sw("k-sq", t.kSquare)}${this._data.tiles.target ? sw("k-tgt", t.kTarget) : ""}</div>`;
+    }
+    _bindHist(root) {
+      const h = this._hist(), q = (s) => root.querySelectorAll(s);
+      const avail = () => (this._hm ? this._hm.years : []);
+      const reset = () => { this._pause(); h.pos = Infinity; this._render(); };
+      q("[data-yall]").forEach((b) => b.addEventListener("click", () => { h.sel = new Set(avail()); reset(); }));
+      q("[data-year]").forEach((b) => b.addEventListener("click", () => { h.sel = tapYear(Number(b.dataset.year), h.sel, avail()); reset(); }));
+      q("[data-ymore]").forEach((b) => b.addEventListener("click", () => { h.more = !h.more; this._render(); }));
+      q("[data-mode]").forEach((b) => b.addEventListener("click", () => { h.mode = b.dataset.mode; reset(); }));
+      q("[data-layers]").forEach((b) => b.addEventListener("click", () => { h.layers = !h.layers; this._render(); }));
+      q("[data-base]").forEach((b) => b.addEventListener("change", () => { h.base = b.dataset.base; store.set("base", h.base); this._glStyle(); this._render(); }));
+      q("[data-ov]").forEach((b) => b.addEventListener("change", () => { h.ov = { ...h.ov, [b.dataset.ov]: b.checked }; store.set("ov", h.ov); this._glVisibility(); this._applyFrame(); }));
+      q("[data-tplay]").forEach((b) => b.addEventListener("click", () => this._togglePlay()));
+      q("[data-speed]").forEach((b) => b.addEventListener("click", () => {
+        h.speed = h.speed >= 8 ? 1 : h.speed * 2; store.set("speed", h.speed); b.textContent = "×" + h.speed;
+        if (h.playing) this._schedule();
+      }));
+      const step = root.getElementById("ghstep");
+      if (step) step.addEventListener("change", () => { h.step = step.value; store.set("step", h.step); this._applyFrame(); });
+      const sl = root.getElementById("ghslider");
+      if (sl) sl.addEventListener("input", () => { this._pause(); h.pos = Number(sl.value); this._applyFrame(); });
+      const slot = root.getElementById("ghmap");
+      if (slot) this._mountMap(slot);
+      this._glStyle();
+      if (this._glReady) this._applyFrame();
+    }
+    _togglePlay() {
+      const h = this._hist(), ix = this._ix;
+      if (h.playing) { this._pause(); this._applyFrame(); return; }
+      if (!ix || !ix.total) return;
+      if (h.pos >= ix.total) h.pos = 1;
+      h.playing = true;
+      this._schedule();
+      this._applyFrame();
+    }
+    _schedule() {
+      clearInterval(this._playTimer);
+      this._playTimer = setInterval(() => this._tick(), Math.max(45, 150 / Math.max(this._hist().speed, 1)));
+    }
+    _pause() { const h = this._hist(); h.playing = false; clearInterval(this._playTimer); this._playTimer = null; }
+    _tick() {
+      const h = this._hist(), ix = this._ix, total = ix ? ix.total : 0;
+      if (!h.playing || !total) { this._pause(); this._applyFrame(); return; }
+      const cur = Math.min(h.pos, total);
+      h.pos = TL.advance(cur >= total ? 0 : cur, h.step, ix.ys, ix.td);
+      if (h.pos >= total) this._pause();
+      this._applyFrame();
+    }
+    /** Per-tick update: texts, slider, play icon and the map (GL filters or SVG redraw). */
+    _applyFrame() {
+      const root = this.shadowRoot, hx = this._histIndex();
+      if (!root || !hx) return;
+      const { m, ix } = hx, h = this._hist(), fr = this._frameOf(m, ix), nf = new Intl.NumberFormat(this._hass?.locale?.language || undefined);
+      const set = (id, v) => { const e = root.getElementById(id); if (e && e.textContent !== v) e.textContent = v; };
+      set("ghlabel", this._yearLabel(ix.ys, m.years) + " · " + this._phLabel(fr.ph, h.step));
+      set("ghcount", nf.format(fr.count));
+      set("ghnew", fr.newCount ? "+" + nf.format(fr.newCount) : "0");
+      set("ghrec", fr.uber.s ? fr.uber.s + "×" + fr.uber.s : "–");
+      const sl = root.getElementById("ghslider");
+      if (sl) { sl.max = String(Math.max(fr.total, 2)); sl.value = String(fr.pos); }
+      const pb = root.querySelector("[data-tplay]");
+      if (pb && this._icons) { const want = h.playing ? "pause" : "play"; if (pb.dataset.icon !== want) { pb.dataset.icon = want; pb.innerHTML = h.playing ? this._icons.PAUSE : this._icons.PLAY; pb.setAttribute("aria-label", h.playing ? this.t.pause : this.t.play); } }
+      if (this._map && this._glReady) this._glFrame(fr);
+      else { const slot = root.getElementById("ghmap"); if (slot && !this._glEl) slot.innerHTML = this._histSvg(m, ix, fr); }
+    }
+    /** SVG fallback (no WebGL, or while MapLibre loads): same tiles, square and target without a base map. */
+    _histSvg(m, ix, fr, w = 640) {
+      const v = this._data.tiles.view, h = this._hist();
+      const ar = (v.y1 - v.y0 + 1) / (v.x1 - v.x0 + 1), H = Math.round(Math.min(480, Math.max(220, w * ar)));
+      const ll = (x, y) => { const [lo, la] = tileLL(x, y); return [la, lo]; };
+      const proj = projection([ll(v.x0, v.y0), ll(v.x1 + 1, v.y1 + 1)], w, H, 8);
       if (!proj) return "";
       this._tproj = proj;
-      const { y, rows } = this._tileOrder(tm), t = tm.tiles;
       let rects = "";
-      for (const [i, , nw] of rows) {
-        const [x0, y0, s] = proj.tile(t[2 * i], t[2 * i + 1]);
-        rects += `<rect class="own${nw ? " nw" : ""}" x="${x0.toFixed(1)}" y="${y0.toFixed(1)}" width="${s.toFixed(1)}" height="${s.toFixed(1)}"/>`;
+      if (h.ov.tiles) for (let i = 0; i < m.n; i++) {
+        if (ix.enter[i] > fr.pos) continue;
+        const [x0, y0, s] = proj.tile(m.tiles[2 * i], m.tiles[2 * i + 1]);
+        if (x0 + s < 0 || y0 + s < 0 || x0 > w || y0 > H) continue;
+        rects += `<rect class="own${ix.fresh[i] <= fr.pos ? " nw" : ""}" x="${x0.toFixed(1)}" y="${y0.toFixed(1)}" width="${s.toFixed(1)}" height="${s.toFixed(1)}"/>`;
       }
-      const sq = y === "all" && !this._playT ? tm.square : this._maxSquare(tm, rows, rows.length);
-      const tg = tm.target, tt = this.t, m = this._tileModel(tm);
-      const tgBox = tg ? this._boxSvg(tg.x0, tg.y0, tg.x1, tg.y1, "tgt", `${tg.x1 - tg.x0 + 1}×${tg.y1 - tg.y0 + 1}`) : "";
-      const sqBox = `<g id="ghsq">${sq ? this._boxSvg(sq.x, sq.y, sq.x + sq.s - 1, sq.y + sq.s - 1, "sq", `${sq.s}×${sq.s}`) : ""}</g>`;
-      const chips = [["all", tt.allYears], ...m.list.slice(0, 8).map((yy) => [yy, yy])]
-        .map(([k, l]) => `<button class="chip ${k === y ? "on" : ""}" data-tyear="${esc(k)}">${esc(l)}</button>`).join("");
-      return `<svg class="map tilesmap" viewBox="0 0 ${w} ${h}" role="img"><style id="ghcut"></style>${gridSvg(proj)}<g id="ghtl">${rects}</g>${tgBox}${sqBox}
-          <text id="ghdate" class="tdate" x="12" y="${h - 12}"></text></svg>
-        <div class="tbar"><button class="chip play" data-tplay="1">${esc(this._playTimer ? "⏸ " + tt.pause : "▶ " + tt.play)}</button>${chips}</div>`;
+      const tg = this._data.tiles.target, sq = fr.uber;
+      const goals = h.ov.goals ? (tg ? this._boxSvg(tg.x0, tg.y0, tg.x1, tg.y1, "tgt", `${tg.x1 - tg.x0 + 1}×${tg.y1 - tg.y0 + 1}`) : "")
+        + (sq.s ? this._boxSvg(sq.x, sq.y, sq.x + sq.s - 1, sq.y + sq.s - 1, "sq", `${sq.s}×${sq.s}`) : "") : "";
+      return `<svg class="map tilesmap" viewBox="0 0 ${w} ${H}" role="img">${gridSvg(proj)}<g>${rects}</g>${goals}</svg>`;
     }
     _boxSvg(x0, y0, x1, y1, cls, label) {
       const proj = this._tproj, [ax, ay] = proj.tile(x0, y0), [bx, by] = proj.tile(x1 + 1, y1 + 1);
       const lab = label ? `<text class="sqlab ${cls}" x="${(bx - 4).toFixed(1)}" y="${(cls === "sq" ? by + 16 : ay - 6).toFixed(1)}" text-anchor="end">${esc(label)}</text>` : "";
       return `<rect class="${cls}" x="${ax.toFixed(1)}" y="${ay.toFixed(1)}" width="${(bx - ax).toFixed(1)}" height="${(by - ay).toFixed(1)}"/>${lab}`;
     }
-    /** Playback frame: show the first part of the selection (CSS nth-child cut), recompute the square, show the date. */
-    _tileFrame(frac) {
-      const tm = this._data && this._data.tiles, root = this.shadowRoot;
-      if (!tm || !root) return;
-      const { rows } = this._tileOrder(tm), k = Math.max(0, Math.min(rows.length, Math.round(frac * rows.length)));
-      const cut = root.getElementById("ghcut"), sqg = root.getElementById("ghsq"), date = root.getElementById("ghdate");
-      if (cut) cut.textContent = k < rows.length ? `#ghtl rect:nth-child(n+${k + 1}){display:none}` : "";
-      if (sqg) { const sq = this._maxSquare(tm, rows, k); sqg.innerHTML = sq ? this._boxSvg(sq.x, sq.y, sq.x + sq.s - 1, sq.y + sq.s - 1, "sq", `${sq.s}×${sq.s}`) : ""; }
-      if (date) {
-        const key = k ? rows[k - 1][1] : rows.length ? rows[0][1] : 0, yy = Math.floor(key / 400), doy = key % 400;
-        date.textContent = key ? new Date(Date.UTC(yy, 0, doy)).toLocaleDateString(this._hass?.locale?.language || undefined, { day: "numeric", month: "short", year: "numeric" }) : "";
+    /* ---- MapLibre ---- */
+    _dark() { return !!(this._hass && this._hass.themes && this._hass.themes.darkMode); }
+    _baseStyle() { const h = this._hist(); return (BASES[h.base] || BASES.detailed)(this._dark()); }
+    /** The GL map lives in one element kept across renders (moved into the new slot). */
+    async _mountMap(slot) {
+      if (this._config.basemap === "none") return;
+      if (this._glEl) { if (this._glEl.parentNode !== slot) { slot.innerHTML = ""; slot.appendChild(this._glEl); this._fitMap(); } return; }
+      if (this._glLoading) return;
+      this._glLoading = true;
+      const ml = await loadMapLibre();
+      if (!ml || !this.shadowRoot || !this._histIndex()) { this._glLoading = false; return; }
+      const v = this._data.tiles.view, el = document.createElement("div");
+      el.className = "glwrap";
+      el.innerHTML = `<style>${ml.css}</style><div class="glmap"></div>`;
+      const cur = this.shadowRoot.getElementById("ghmap") || slot;
+      cur.innerHTML = "";
+      cur.appendChild(el);
+      this._glEl = el;
+      const [w, n] = tileLL(v.x0, v.y0), [e, s] = tileLL(v.x1 + 1, v.y1 + 1), t = this.t;
+      try {
+        const map = new ml.lib.Map({
+          container: el.querySelector(".glmap"), style: this._baseStyle(), bounds: [[w, s], [e, n]], fitBoundsOptions: { padding: 16 },
+          attributionControl: { compact: true }, cooperativeGestures: true, dragRotate: false, pitchWithRotate: false, touchPitch: false, maxZoom: 17,
+          locale: { "CooperativeGesturesHandler.WindowsHelpText": t.gestWin, "CooperativeGesturesHandler.MacHelpText": t.gestMac, "CooperativeGesturesHandler.MobileHelpText": t.gestMobile },
+        });
+        map.touchZoomRotate.disableRotation();
+        map.addControl(new ml.lib.NavigationControl({ showCompass: false }), "top-right");
+        map.on("style.load", () => { this._glReady = true; this._glLayers(); });
+        this._map = map;
+        this._glStyleUrl = this._baseStyle();
+        // The card re-renders its shadow DOM on every filter tap and HA hides/shows views; keep the canvas sized to the slot.
+        if (window.ResizeObserver) { this._ro = new ResizeObserver(() => this._fitMap(true)); this._ro.observe(el); }
+      } catch (err) {
+        this._glEl = null; this._map = null; this._config = { ...this._config, basemap: "none" };
+        this._render();
       }
+      this._glLoading = false;
     }
-    _togglePlay() {
-      if (this._playTimer) { clearInterval(this._playTimer); this._playTimer = null; this._playT = 0; this._render(); return; }
-      const DUR = 12000, STEP = 80, t0 = Date.now();
-      this._playT = 0.0001;
-      this._playTimer = setInterval(() => {
-        const f = Math.min(1, (Date.now() - t0) / DUR);
-        this._playT = f;
-        this._tileFrame(f);
-        if (f >= 1) { clearInterval(this._playTimer); this._playTimer = null; this._playT = 0; setTimeout(() => this._render(), 1500); }
-      }, STEP);
-      this._render();
+    /** Resize the GL canvas to its slot now and after layout settles (Safari/HA report the size late after a move). */
+    _fitMap(now) {
+      const map = this._map;
+      if (!map) return;
+      const fit = () => { if (this._map === map && this._glEl && this._glEl.isConnected && this._glEl.clientWidth) { map.resize(); map.triggerRepaint(); } };
+      fit();
+      if (now) return;
+      requestAnimationFrame(() => { fit(); requestAnimationFrame(fit); });
+      setTimeout(fit, 250);
+    }
+    _glStyle() {
+      if (!this._map) return;
+      const url = this._baseStyle();
+      if (url === this._glStyleUrl) return;
+      this._glStyleUrl = url;
+      this._glReady = false;
+      this._map.setStyle(url, { diff: false });
+    }
+    _glColors() {
+      const dark = this._dark();
+      return { own: dark ? "#5b7bff" : "#2447e0", ownA: dark ? 0.55 : 0.42, nw: "#d98e04", nwLine: dark ? "#f0b43c" : "#8a5a00", sq: "#f5b82e", tgt: dark ? "#22c55e" : "#168a40" };
+    }
+    _glLayers() {
+      const map = this._map, hx = this._histIndex();
+      if (!map || !hx) return;
+      const c = this._glColors();
+      if (!map.getSource("gh-tiles")) map.addSource("gh-tiles", { type: "geojson", data: { type: "FeatureCollection", features: [] }, buffer: 0, tolerance: 0 });
+      if (!map.getSource("gh-goals")) map.addSource("gh-goals", { type: "geojson", data: { type: "FeatureCollection", features: [] } });
+      if (!map.getLayer("gh-tiles")) map.addLayer({ id: "gh-tiles", type: "fill", source: "gh-tiles", paint: { "fill-color": c.own, "fill-opacity": c.ownA, "fill-antialias": false } });
+      if (!map.getLayer("gh-new")) map.addLayer({ id: "gh-new", type: "line", source: "gh-tiles", paint: { "line-color": c.nwLine, "line-width": 0.75 } });
+      if (!map.getLayer("gh-tgt")) map.addLayer({ id: "gh-tgt", type: "line", source: "gh-goals", filter: ["==", ["get", "k"], "tgt"], paint: { "line-color": c.tgt, "line-width": 3, "line-dasharray": [3, 2] } });
+      if (!map.getLayer("gh-sq")) map.addLayer({ id: "gh-sq", type: "line", source: "gh-goals", filter: ["==", ["get", "k"], "sq"], paint: { "line-color": c.sq, "line-width": 3 } });
+      this._glDataKey = null;
+      this._glVisibility();
+      this._applyFrame();
+    }
+    _glVisibility() {
+      const map = this._map, h = this._hist();
+      if (!map || !this._glReady) return;
+      const vis = (on) => (on ? "visible" : "none");
+      for (const id of ["gh-tiles", "gh-new"]) if (map.getLayer(id)) map.setLayoutProperty(id, "visibility", vis(h.ov.tiles));
+      for (const id of ["gh-tgt", "gh-sq"]) if (map.getLayer(id)) map.setLayoutProperty(id, "visibility", vis(h.ov.goals));
+    }
+    _glFrame(fr) {
+      const map = this._map, hx = this._histIndex();
+      if (!map || !hx || !map.getSource("gh-tiles")) return;
+      const { m, ix } = hx, c = this._glColors();
+      if (this._glDataKey !== this._ixKey) {
+        this._glDataKey = this._ixKey;
+        const features = [];
+        for (let i = 0; i < m.n; i++) {
+          if (ix.enter[i] === NEVER) continue;
+          const x = m.tiles[2 * i], y = m.tiles[2 * i + 1];
+          features.push({ type: "Feature", properties: { e: ix.enter[i], f: ix.fresh[i] }, geometry: { type: "Polygon", coordinates: [boxRing(x, y, x, y)] } });
+        }
+        map.getSource("gh-tiles").setData({ type: "FeatureCollection", features });
+        this._glSq = null;
+      }
+      const L = fr.pos, isNew = ["<=", ["get", "f"], L];
+      map.setFilter("gh-tiles", ["<=", ["get", "e"], L]);
+      map.setFilter("gh-new", ["all", ["<=", ["get", "e"], L], isNew]);
+      map.setPaintProperty("gh-tiles", "fill-color", ["case", isNew, c.nw, c.own]);
+      map.setPaintProperty("gh-tiles", "fill-opacity", ["case", isNew, 0.78, c.ownA]);
+      const sq = fr.uber, tg = this._data.tiles.target, sqKey = `${sq.s}|${sq.x}|${sq.y}`;
+      if (this._glSq !== sqKey) {
+        this._glSq = sqKey;
+        const f = [];
+        if (tg) f.push({ type: "Feature", properties: { k: "tgt" }, geometry: { type: "LineString", coordinates: boxRing(tg.x0, tg.y0, tg.x1, tg.y1) } });
+        if (sq.s) f.push({ type: "Feature", properties: { k: "sq" }, geometry: { type: "LineString", coordinates: boxRing(sq.x, sq.y, sq.x + sq.s - 1, sq.y + sq.s - 1) } });
+        map.getSource("gh-goals").setData({ type: "FeatureCollection", features: f });
+      }
     }
     _routeSvg(r, w = 640, h = 220) {
       const pts = (r.line || []).flat();
@@ -245,6 +599,7 @@
 
     _render() {
       if (!this.shadowRoot) this.attachShadow({ mode: "open" });
+      this.toggleAttribute("dark", this._dark());
       const t = this.t, d = this._data, nf = new Intl.NumberFormat(this._hass?.locale?.language || undefined, { maximumFractionDigits: 1 });
       let body;
       if (!d && !this._error) body = `<div class="pad muted">${esc(t.loading)}</div>`;
@@ -272,7 +627,7 @@
           const st = d.stats || {}, l = s.lastRide;
           const last = l ? `<div class="last"><span class="muted">${esc(t.lastRide)}</span> <b>${esc(l.name || "")}</b> · ${esc(nf.format(l.distanceKm))} ${esc(t.km)} · +${esc(l.tiles)} ${esc(t.tiles)}</div>` : "";
           const routes = d.routes || [];
-          const tilesMap = this._tilesSvg(d.tiles);
+          const tilesMap = this._histHtml();
           // with the tile map the route map opens only after a tap (less height); without it the first route as before
           const sel = this._routeId || (!tilesMap && routes[0] && routes[0].id);
           if (sel && this._routeId !== sel && !this._route) queueMicrotask(() => this._pickRoute(sel));
@@ -283,7 +638,7 @@
           // jeden wiersz: znak, „Teraz nikt nie jedzie”, liczniki (zawija się na wąskim ekranie)
           body = `<div class="idlehead">${LOGO}<div class="idle" title="${esc(title)}">${esc(t.nobody)}</div>
             <div class="stats inline">${this._stat(t.total, nf.format(st.tilesZ14 || 0))}${this._stat(t.square, (st.uber || 0) + "×" + (st.uber || 0))}${this._stat(t.year, "+" + (st.newThisYear || 0), "t")}${st.rides ? this._stat(t.rides, st.rides.count) : ""}</div></div>${last}
-            ${tilesMap ? `<div class="mapbox">${tilesMap}</div>` : ""}
+            ${tilesMap}
             ${extSections}<h3>${esc(t.routes)}</h3>${routeList}`;
         }
       }
@@ -295,17 +650,14 @@
         if (this._routeId === b.dataset.route && this._data && this._data.tiles) { this._routeId = null; this._route = null; this._render(); }
         else this._pickRoute(b.dataset.route);
       }));
-      this.shadowRoot.querySelectorAll("[data-tyear]").forEach((b) => b.addEventListener("click", () => {
-        if (this._playTimer) { clearInterval(this._playTimer); this._playTimer = null; this._playT = 0; }
-        this._tsel = b.dataset.tyear; this._render();
-      }));
-      this.shadowRoot.querySelectorAll("[data-tplay]").forEach((b) => b.addEventListener("click", () => this._togglePlay()));
-      if (this._playTimer && this._playT) this._tileFrame(this._playT);
+      if (this._data && !(this._data.state || {}).riding && this._data.tiles) this._bindHist(this.shadowRoot);
       for (const ext of this._ext()) if (ext.bind) ext.bind(this.shadowRoot, this._data, this._ctx());
     }
   }
   GridhuntCard.css = `
-    :host{--gh-accent:var(--primary-color,#2447e0);--gh-mark-tile:#5b7bff;--gh-square:#f5b82e;--gh-target:#22c55e;--gh-tile:#e69f00;--gh-live:#d6336c}
+    :host{--gh-logo-tile:#2447e0;--gh-logo-square:#a87a00;--gh-logo-target:#15803d;--gh-accent:var(--primary-color,#2447e0);--gh-mark-tile:#5b7bff;--gh-square:#f5b82e;--gh-target:#22c55e;--gh-tile:#e69f00;--gh-live:#d6336c;
+      --gh-own:#2447e0;--gh-new:#d98e04;--gh-new-line:#8a5a00;--gh-new-ink:#9a6400;--gh-accent-wash:color-mix(in srgb,var(--gh-accent) 14%,var(--card-background-color,#fff));--gh-accent-ink:color-mix(in srgb,var(--gh-accent) 75%,#000)}
+    :host([dark]){--gh-logo-tile:#5b7bff;--gh-logo-square:#f5b82e;--gh-logo-target:#22c55e;--gh-own:#5b7bff;--gh-new-line:#f0b43c;--gh-new-ink:#f0b43c;--gh-accent-ink:color-mix(in srgb,var(--gh-accent) 60%,#fff)}
     ha-card{display:block;padding:16px;overflow:hidden}.st small{font-size:.5em;font-weight:700;color:var(--secondary-text-color)}
     .head{display:flex;align-items:center;gap:10px;font-size:1.25em}.grow{flex:1;min-width:0}
     .logo{width:24px;height:24px;flex:none;display:block}
@@ -317,12 +669,40 @@
     .grid{stroke:var(--divider-color,rgba(127,127,127,.25));stroke-width:.6;fill:none}
     .route{fill:none;stroke:var(--gh-accent);stroke-opacity:.45;stroke-width:6;stroke-linecap:round;stroke-linejoin:round}
     .trail{fill:none;stroke:var(--gh-accent);stroke-width:4;stroke-linecap:round;stroke-linejoin:round}
-    .own{fill:var(--gh-mark-tile);fill-opacity:.5;stroke:var(--gh-mark-tile);stroke-opacity:.35;stroke-width:.5}
+    .own{fill:var(--gh-own);fill-opacity:.42;stroke:none}
     .sq{fill:none;stroke:var(--gh-square);stroke-width:3}.tgt{fill:none;stroke:var(--gh-target);stroke-width:3;stroke-dasharray:10 6}
     .sqlab{font:700 13px sans-serif;stroke:none}.sqlab.sq{fill:var(--gh-square)}.sqlab.tgt{fill:var(--gh-target)}
-    svg.tilesmap{max-height:min(60vh,480px)}.own.nw{fill:var(--gh-tile);stroke:var(--gh-tile);fill-opacity:.7}
-    .tdate{font:700 15px sans-serif;fill:var(--primary-text-color,#212121);paint-order:stroke;stroke:var(--card-background-color,#fff);stroke-width:3}
-    .tbar{display:flex;gap:6px;flex-wrap:wrap;margin:8px 0 2px}.chip.play{font-weight:700}
+    svg.tilesmap{max-height:min(60vh,480px)}.own.nw{fill:var(--gh-new);fill-opacity:.78;stroke:var(--gh-new-line);stroke-width:.75}
+    .ychips{display:flex;gap:8px;overflow-x:auto;scrollbar-width:none;padding:4px 0;margin:6px -16px 0;padding-left:16px;padding-right:16px;
+      -webkit-mask:linear-gradient(90deg,transparent 0,#000 16px,#000 calc(100% - 24px),transparent);mask:linear-gradient(90deg,transparent 0,#000 16px,#000 calc(100% - 24px),transparent)}
+    .ychips::-webkit-scrollbar{display:none}
+    .ychip{flex:none;display:inline-flex;align-items:center;gap:4px;min-height:32px;padding:0 12px;border-radius:999px;cursor:pointer;white-space:nowrap;
+      font:500 13px ui-monospace,SFMono-Regular,Menlo,monospace;color:var(--secondary-text-color);background:var(--card-background-color,#fff);border:1px solid var(--divider-color,rgba(127,127,127,.3))}
+    .ychip.on{font-weight:600;color:var(--gh-accent-ink);background:var(--gh-accent-wash);border-color:color-mix(in srgb,var(--gh-accent) 55%,transparent)}
+    .ychip .ck{font-size:11px;font-weight:800}.ychip.more{min-width:44px;justify-content:center;font-weight:700}
+    .morebox{margin:6px 0;padding:10px 12px;border-radius:12px;background:var(--secondary-background-color,rgba(127,127,127,.08));font-size:.85em}.morebox p{margin:6px 0}
+    .seg{display:flex;border-radius:10px;padding:2px;background:var(--divider-color,rgba(127,127,127,.2));gap:2px}
+    .seg button{flex:1;border:0;border-radius:8px;padding:6px 8px;background:none;color:inherit;font:inherit;cursor:pointer}.seg button.on{background:var(--card-background-color,#fff);font-weight:700;box-shadow:0 1px 3px rgba(0,0,0,.15)}
+    .mapbox.hist{position:relative}.mapslot{min-height:220px}.glwrap,.glmap{width:100%;height:min(60vh,440px)}.glmap{position:relative}
+    .lchip{position:absolute;left:10px;top:10px;z-index:3;display:inline-flex;align-items:center;gap:6px;min-height:34px;padding:0 12px;border-radius:999px;cursor:pointer;
+      font:600 13px sans-serif;color:var(--primary-text-color,#111);background:color-mix(in srgb,var(--card-background-color,#fff) 88%,transparent);border:1px solid var(--divider-color,rgba(127,127,127,.3));box-shadow:0 2px 8px rgba(0,0,0,.15);backdrop-filter:blur(8px)}
+    .lchip svg{width:16px;height:16px;fill:currentColor}
+    .lpanel{position:absolute;left:10px;top:50px;z-index:3;display:flex;flex-direction:column;gap:6px;min-width:190px;padding:10px 12px;border-radius:12px;font-size:.9em;
+      background:var(--card-background-color,#fff);color:var(--primary-text-color,#111);border:1px solid var(--divider-color,rgba(127,127,127,.3));box-shadow:0 6px 20px rgba(0,0,0,.2)}
+    .lpanel b{font-size:.75em;text-transform:uppercase;letter-spacing:.06em;color:var(--secondary-text-color);margin-top:4px}.lpanel label{display:flex;align-items:center;gap:8px;cursor:pointer}
+    .eyebrow{font-size:.75em;font-weight:700;text-transform:uppercase;letter-spacing:.06em;color:var(--secondary-text-color);margin:10px 0 4px;white-space:nowrap;overflow:hidden;text-overflow:ellipsis}
+    .hstats{display:flex;gap:16px;align-items:flex-start}.hstats div{display:flex;flex-direction:column}.hstats b{font-size:1.5em;font-weight:800;font-variant-numeric:tabular-nums;line-height:1.15}
+    .hstats span{font-size:.8em;color:var(--secondary-text-color)}.hstats .nw b{color:var(--gh-new-ink)}
+    .tlbar{display:flex;align-items:center;gap:8px;margin:6px 0 2px}
+    .playc{flex:none;width:44px;height:44px;border:0;padding:4px;background:none;cursor:pointer;display:grid;place-items:center}
+    .playc svg{width:36px;height:36px;border-radius:50%;padding:9px;box-sizing:border-box;background:var(--primary-text-color,#111);fill:var(--card-background-color,#fff)}
+    #ghslider{flex:1;min-width:60px;accent-color:var(--gh-accent);height:32px}
+    .stepsel select,.speed{min-height:32px;border-radius:999px;border:1px solid var(--divider-color,rgba(127,127,127,.3));background:var(--secondary-background-color,rgba(127,127,127,.08));
+      color:var(--primary-text-color,#111);font:600 13px sans-serif;padding:0 12px;cursor:pointer}
+    .speed{min-width:44px;font-family:ui-monospace,SFMono-Regular,Menlo,monospace}
+    .legend{display:flex;flex-wrap:wrap;gap:4px 12px;font-size:.8em;color:var(--secondary-text-color);margin:4px 0 2px}.key{display:inline-flex;align-items:center;gap:5px}
+    .key i{width:10px;height:10px;border-radius:2px;display:inline-block}.k-own{background:color-mix(in srgb,var(--gh-own) 55%,transparent)}
+    .k-new{background:var(--gh-new);box-shadow:inset 0 0 0 1.5px var(--gh-new-line)}.k-sq{box-shadow:inset 0 0 0 2px var(--gh-square)}.k-tgt{border:2px dashed var(--gh-target);box-sizing:border-box}
     .mine{fill:var(--gh-tile);fill-opacity:.45;stroke:var(--gh-tile);stroke-width:1}
     .me{fill:var(--gh-accent);stroke:#fff;stroke-width:3}.me-halo{fill:var(--gh-accent);opacity:.2}
     .frame{width:100%;height:min(60vh,480px);border:0;display:block}
@@ -339,11 +719,80 @@
     .pad{padding:8px 0}
   `;
   GridhuntCard.helpers = { projection, path, tilesSvg, esc, fmt, merc };
+  window.__ghTimeline = TL;
 
   if (!customElements.get("gridhunt-card")) customElements.define("gridhunt-card", GridhuntCard);
   window.customCards = window.customCards || [];
   if (!window.customCards.some((c) => c.type === "gridhunt-card")) {
     window.customCards.push({ type: "gridhunt-card", name: "Gridhunt", description: "Live ride, tiles, square and planned routes from Gridhunt." });
+  }
+
+  /* ---- Dashboard / view strategy (custom:gridhunt) ---- */
+  const tr = (hass) => I18N[String(hass?.locale?.language || hass?.language || "en").slice(0, 2)] || I18N.en;
+  /** Entity role by registry translation_key (sensor.py, binary_sensor.py, device_tracker.py); entity_id suffix as a fallback. */
+  const ROLES = { riding: "riding", position: "position", progress_pct: "progress", distance_done_km: "done", distance_left_km: "left",
+    distance_km: "rideDistance", new_tiles: "newRide", square: "square", tiles_total: "tiles", tiles_this_year: "newYear", last_ride: "lastRide" };
+  function roleOf(reg) {
+    const k = reg.translation_key;
+    if (k && ROLES[k]) return ROLES[k];
+    const id = String(reg.entity_id || "");
+    for (const key of Object.keys(ROLES).sort((a, b) => b.length - a.length)) if (id.endsWith("_" + key)) return ROLES[key];
+    return null;
+  }
+  /** Gridhunt accounts found in hass.entities: [{ device_id, name, roles: {role: entity_id}, extra: [entity_id] }]. */
+  function strategyAccounts(hass, onlyDevice) {
+    const by = new Map();
+    for (const reg of Object.values(hass?.entities || {})) {
+      if (reg.platform !== "gridhunt" || reg.hidden || !hass.states?.[reg.entity_id]) continue;
+      const dev = reg.device_id || "";
+      if (onlyDevice && dev !== onlyDevice) continue;
+      if (!by.has(dev)) {
+        const d = hass.devices?.[dev];
+        by.set(dev, { device_id: dev, name: d?.name_by_user || d?.name || "Gridhunt", entry_id: d?.config_entries?.[0], roles: {}, extra: [] });
+      }
+      const a = by.get(dev), role = roleOf(reg);
+      if (role && !a.roles[role]) a.roles[role] = reg.entity_id;
+      else if (!role && reg.entity_id.startsWith("sensor.")) a.extra.push(reg.entity_id);
+    }
+    return [...by.values()].sort((x, y) => x.name.localeCompare(y.name));
+  }
+  const ghTile = (entity, name) => ({ type: "tile", entity, ...(name ? { name } : {}), grid_options: { columns: 6 } });
+  const ghHeading = (heading, icon) => ({ type: "heading", heading, heading_style: "title", icon });
+  function strategyView(config, hass) {
+    const t = tr(hass), accounts = strategyAccounts(hass, config?.device_id), many = accounts.length > 1;
+    if (!accounts.length) return { type: "sections", max_columns: 3, sections: [{ type: "grid", cards: [{ type: "markdown", content: t.sNoData }] }] };
+    const badges = [], sections = [];
+    for (const a of accounts) {
+      const r = a.roles, pre = many ? a.name + ": " : "", live = [], ride = [], acct = [];
+      if (r.riding) badges.push({ type: "entity", entity: r.riding, show_name: true, color: "green" });
+      for (const k of ["tiles", "square"]) if (r[k]) badges.push({ type: "entity", entity: r[k], show_name: true });
+      live.push(ghHeading(pre + t.sLive, "mdi:map-marker-path"));
+      live.push({ type: "custom:gridhunt-card", map: "live-page", ...(many && a.entry_id ? { entry_id: a.entry_id } : {}), grid_options: { columns: "full" } });
+      if (r.position) live.push({ type: "map", entities: [{ entity: r.position }], hours_to_show: 12, default_zoom: 14, auto_fit: true, grid_options: { rows: 8 } });
+      sections.push({ type: "grid", column_span: 2, cards: live });
+      for (const [k, n] of [["riding", "sRiding"], ["rideDistance", "sRideDistance"], ["done", "sDone"], ["left", "sLeft"], ["progress", "sProgress"], ["newRide", "sNewRide"]])
+        if (r[k]) ride.push(ghTile(r[k], t[n]));
+      for (const [k, n] of [["tiles", "sTiles"], ["square", "sSquare"], ["newYear", "sNewYear"], ["lastRide", "sLastRide"]]) if (r[k]) acct.push(ghTile(r[k], t[n]));
+      for (const e of a.extra) acct.push(ghTile(e));
+      const cards = [];
+      if (ride.length) cards.push(ghHeading(pre + t.sRide, "mdi:bike-fast"), ...ride);
+      if (acct.length) cards.push(ghHeading(pre + t.sAccount, "mdi:grid"), ...acct);
+      if (cards.length) sections.push({ type: "grid", cards });
+    }
+    return { type: "sections", max_columns: 3, badges, sections };
+  }
+  function strategyDashboard(config, hass) {
+    const t = tr(hass), view = { title: t.sView, path: "gridhunt", icon: "mdi:bike", strategy: { type: "custom:gridhunt", ...(config?.device_id ? { device_id: config.device_id } : {}) } };
+    return { title: t.sView, views: [view] };
+  }
+  class GridhuntViewStrategy extends HTMLElement { static async generate(config, hass) { return strategyView(config, hass); } }
+  class GridhuntDashboardStrategy extends HTMLElement { static async generate(config, hass) { return strategyDashboard(config, hass); } }
+  if (!customElements.get("ll-strategy-view-gridhunt")) customElements.define("ll-strategy-view-gridhunt", GridhuntViewStrategy);
+  if (!customElements.get("ll-strategy-dashboard-gridhunt")) customElements.define("ll-strategy-dashboard-gridhunt", GridhuntDashboardStrategy);
+  // Picker "Community dashboards" (dashboards only; view strategies cannot be picked in the editor yet)
+  window.customStrategies = window.customStrategies || [];
+  if (!window.customStrategies.some((c) => c.type === "gridhunt" && c.strategyType === "dashboard")) {
+    window.customStrategies.push({ type: "gridhunt", strategyType: "dashboard", name: "Gridhunt", description: I18N.en.sDesc, documentationURL: "https://github.com/gridhunt-app/home-assistant-gridhunt" });
   }
   window.gridhuntCardExtensions = window.gridhuntCardExtensions || [];
   console.info(`%c GRIDHUNT-CARD %c ${VERSION} `, "background:#2447e0;color:#fff;font-weight:700", "");
