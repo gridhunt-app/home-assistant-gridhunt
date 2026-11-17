@@ -100,4 +100,25 @@ async def test_unload(hass, aioclient_mock):
     assert await hass.config_entries.async_unload(entry.entry_id)
     await hass.async_block_till_done()
     assert entry.state is ConfigEntryState.NOT_LOADED
+    # unload keeps the server-side webhook (no lost events across reloads); only removal deletes it
+    assert not [r for r in aioclient_mock.mock_calls if r[0] == "DELETE"]
+    assert await hass.config_entries.async_remove(entry.entry_id)
     assert [r for r in aioclient_mock.mock_calls if r[0] == "DELETE"]
+
+
+async def test_entity_ids_have_gridhunt_prefix_without_account_name(hass, aioclient_mock):
+    """Owner 16.11.2026: device "Gridhunt" -> sensor.gridhunt_tiles / "Gridhunt Tiles", no account name."""
+    from homeassistant.helpers import device_registry as dr
+
+    mock_api(aioclient_mock)
+    entry = await setup_entry(hass)
+    reg = er.async_get(hass)
+    ids = {e.entity_id for e in er.async_entries_for_config_entry(reg, entry.entry_id)}
+    assert "binary_sensor.gridhunt_riding" in ids and "device_tracker.gridhunt_position" in ids
+    assert all(i.split(".", 1)[1].startswith("gridhunt") for i in ids), ids
+    assert not any("lucja" in i for i in ids)
+    st = hass.states.get("binary_sensor.gridhunt_riding")
+    assert st.attributes["friendly_name"] == "Gridhunt Riding"
+    dev = next(d for d in dr.async_entries_for_config_entry(dr.async_get(hass), entry.entry_id) if (DOMAIN, entry.entry_id) in d.identifiers)
+    assert dev.name == "Gridhunt"
+    assert entry.version == 3

@@ -3,20 +3,35 @@
 from __future__ import annotations
 
 import hashlib
+import re
 from collections.abc import Mapping
 from typing import Any
 from urllib.parse import urlencode
 
 import voluptuous as vol
-from homeassistant.config_entries import ConfigFlow, ConfigFlowResult
+from homeassistant.config_entries import ConfigEntry, ConfigFlow, ConfigFlowResult, OptionsFlow
+from homeassistant.core import callback
 from homeassistant.helpers.aiohttp_client import async_get_clientsession
 
-from .api import ApiError, AuthError, GridhuntClient
-from .const import CONF_BASE_URL, CONF_TOKEN, DEFAULT_BASE_URL, DOMAIN, PAIR_NAME
+from .api import ApiError, AuthError, GridhuntClient, account_id_of
+from .const import (
+    CONF_BASE_URL,
+    CONF_SHOW_PANEL,
+    CONF_TOKEN,
+    DEFAULT_BASE_URL,
+    DEFAULT_SHOW_PANEL,
+    DOMAIN,
+    PAIR_NAME,
+)
 
 
 def _norm(url: str) -> str:
     return url.strip().rstrip("/")
+
+
+def _is_legacy_uid(uid: str) -> bool:
+    """unique_id of versions before 0.1.18: 12 hex chars of the token hash."""
+    return re.fullmatch(r"[0-9a-f]{12}", uid) is not None
 
 
 def unique_id_for(token: str) -> str:
@@ -26,7 +41,12 @@ def unique_id_for(token: str) -> str:
 class GridhuntConfigFlow(ConfigFlow, domain=DOMAIN):
     """Handle a config flow."""
 
-    VERSION = 1
+    VERSION = 3
+
+    @staticmethod
+    @callback
+    def async_get_options_flow(config_entry: ConfigEntry) -> GridhuntOptionsFlow:
+        return GridhuntOptionsFlow()
 
     def __init__(self) -> None:
         self._base_url = DEFAULT_BASE_URL
@@ -55,12 +75,18 @@ class GridhuntConfigFlow(ConfigFlow, domain=DOMAIN):
         return await self._create(token, me)
 
     async def _create(self, token: str, me: dict[str, Any]) -> ConfigFlowResult:
-        uid = unique_id_for(token)
+        account_id = account_id_of(me)
+        uid = account_id or unique_id_for(token)  # token hash only for servers without an account id
         data = {CONF_BASE_URL: self._base_url, CONF_TOKEN: token}
         if self._reauth:
-            return self.async_update_reload_and_abort(
-                self._get_reauth_entry(), unique_id=uid, data_updates=data
-            )
+            entry = self._get_reauth_entry()
+            if not account_id:
+                return self.async_update_reload_and_abort(entry, data_updates=data)
+            if entry.unique_id and not _is_legacy_uid(entry.unique_id):
+                # the new token must belong to the same account
+                await self.async_set_unique_id(uid)
+                self._abort_if_unique_id_mismatch(reason="wrong_account")
+            return self.async_update_reload_and_abort(entry, unique_id=uid, data_updates=data)
         await self.async_set_unique_id(uid)
         self._abort_if_unique_id_configured()
         return self.async_create_entry(title=me.get("name") or "Gridhunt", data=data)
@@ -159,4 +185,17 @@ class GridhuntConfigFlow(ConfigFlow, domain=DOMAIN):
                 }
             ),
             errors=errors,
+        )
+
+
+class GridhuntOptionsFlow(OptionsFlow):
+    """Account options: sidebar panel on/off (applied without a restart)."""
+
+    async def async_step_init(self, user_input: dict[str, Any] | None = None) -> ConfigFlowResult:
+        if user_input is not None:
+            return self.async_create_entry(data={**self.config_entry.options, **user_input})
+        current = self.config_entry.options.get(CONF_SHOW_PANEL, DEFAULT_SHOW_PANEL)
+        return self.async_show_form(
+            step_id="init",
+            data_schema=vol.Schema({vol.Required(CONF_SHOW_PANEL, default=current): bool}),
         )

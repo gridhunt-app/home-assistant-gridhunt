@@ -9,13 +9,15 @@
  *
  * Strategies (same file): dashboard `strategy: {type: custom:gridhunt}` and view `strategy: {type: custom:gridhunt}`
  * (optional `device_id` limits the view to one account). Builds the owner's "sections" layout from hass.entities.
+ * Sidebar (same file): element `gridhunt-panel` (registered by panel.py through panel_custom) renders that view for all
+ * accounts; icon set `gridhunt:mark` (window.customIconsets) is the sidebar icon.
  *
  * Data: hass.callWS({type: "gridhunt/card"}) every 20 s (riding) / 60 s (idle); route map: gridhunt/route.
  * Extensions: window.gridhuntCardExtensions = [{ id, title(data, ctx), mapLayers(data, proj, ctx), sections(data, ctx) }]
  * may add map layers and sections (loaded as separate scripts when the account has extra features).
  */
 (() => {
-  const VERSION = "0.1.9";
+  const VERSION = "0.1.18";
   const I18N = {
     en: {
       live: "LIVE", nobody: "Nobody is riding right now", lastRide: "Last ride", done: "ridden", left: "to go", tiles: "new tiles",
@@ -32,10 +34,13 @@
       base: "Base map", baseSimple: "Simple", baseDetailed: "Detailed", overlays: "Overlays", ovTiles: "My tiles", ovGoals: "Square and target",
       kOwned: "visited", kNew: "new in {y}", kSquare: "square", kTarget: "target",
       gestWin: "Use Ctrl + scroll to zoom the map", gestMac: "Use ⌘ + scroll to zoom the map", gestMobile: "Use two fingers to move the map",
-      sView: "Gridhunt", sLive: "Live ride", sRide: "Current ride", sAccount: "Account", sRiding: "Riding", sRideDistance: "Distance",
-      sDone: "Ridden", sLeft: "To go", sProgress: "Route progress", sNewRide: "New tiles", sTiles: "Tiles", sSquare: "Square",
+      sView: "gridhunt", sLive: "Live ride", sRide: "Current ride", sAccount: "Account", sRiding: "Riding", sRideDistance: "Distance ridden",
+      sDone: "Along route", sLeft: "To finish", sProgress: "Route progress", sNewRide: "New tiles", sTiles: "Tiles", sSquare: "Square",
       sNewYear: "New this year", sLastRide: "Last ride", sNoData: "No Gridhunt entities found. Add the Gridhunt integration first.",
       sDesc: "Live ride, tiles and square from Gridhunt in one view.",
+      sMapTitle: "My position (12 h)",
+      pMenu: "Menu", pCopy: "Editable copy", pCopyAsk: "Create a new dashboard with a copy of this view that you can edit? This panel stays as it is.",
+      pCopyFail: "Could not create the dashboard: {e}",
     },
     pl: {
       live: "NA ŻYWO", nobody: "Teraz nikt nie jedzie", lastRide: "Ostatnia jazda", done: "przejechane", left: "do mety", tiles: "nowe kafle",
@@ -52,10 +57,13 @@
       base: "Podkład", baseSimple: "Prosty", baseDetailed: "Szczegółowy", overlays: "Nakładki", ovTiles: "Moje kafle", ovGoals: "Kwadrat i cel",
       kOwned: "zdobyte", kNew: "nowe w {y}", kSquare: "kwadrat", kTarget: "cel",
       gestWin: "Użyj Ctrl + przewijania, aby przybliżyć mapę", gestMac: "Użyj ⌘ + przewijania, aby przybliżyć mapę", gestMobile: "Przesuń mapę dwoma palcami",
-      sView: "Gridhunt", sLive: "Jazda na żywo", sRide: "Bieżąca jazda", sAccount: "Konto", sRiding: "Jadę", sRideDistance: "Dystans",
-      sDone: "Przejechane", sLeft: "Do mety", sProgress: "Postęp trasy", sNewRide: "Nowe kafle", sTiles: "Kafle", sSquare: "Kwadrat",
+      sView: "gridhunt", sLive: "Jazda na żywo", sRide: "Bieżąca jazda", sAccount: "Konto", sRiding: "Jadę", sRideDistance: "Przejechane",
+      sDone: "Na trasie", sLeft: "Do mety", sProgress: "Postęp trasy", sNewRide: "Nowe kafle", sTiles: "Kafle", sSquare: "Kwadrat",
       sNewYear: "Nowe w tym roku", sLastRide: "Ostatnia jazda", sNoData: "Nie znaleziono encji Gridhunt. Najpierw dodaj integrację Gridhunt.",
       sDesc: "Jazda na żywo, kafle i kwadrat z Gridhunt w jednym widoku.",
+      sMapTitle: "Moja pozycja (12 h)",
+      pMenu: "Menu", pCopy: "Edytowalna kopia", pCopyAsk: "Utworzyć nowy pulpit z kopią tego widoku, którą możesz edytować? Ten panel zostanie bez zmian.",
+      pCopyFail: "Nie udało się utworzyć pulpitu: {e}",
     },
   };
   const fmt = (s, o) => String(s).replace(/\{(\w+)\}/g, (_, k) => String(o[k] ?? ""));
@@ -239,6 +247,13 @@
     return mlPromise;
   }
 
+  /** Entity id of the account's riding binary_sensor (strategyAccounts, below), null when not found. */
+  function ridingEntityOf(hass, entryId) {
+    const accounts = strategyAccounts(hass);
+    const a = (entryId && accounts.find((x) => x.entry_id === entryId)) || (accounts.length === 1 ? accounts[0] : null);
+    return (a && a.roles.riding) || null;
+  }
+
   class GridhuntCard extends HTMLElement {
     setConfig(config) {
       this._config = { map: "svg", ...(config || {}) };
@@ -249,7 +264,17 @@
     set hass(hass) {
       const first = !this._hass;
       this._hass = hass;
-      if (first) { this._render(); this._load(); }
+      if (first) { this._render(); this._load(); return; }
+      // the card polls every 60 s when idle: a ride starting (or ending) between polls would leave it on the old view
+      // while binary_sensor.gridhunt_riding already changed (webhook). Reload once per change of that entity.
+      const eid = this._config.entry_id || this._data?.entry_id;
+      // registry scan only when the registry or the account changes (hass is set on every state change in HA)
+      if (this._ridingRef !== hass.entities || this._ridingKey !== eid) { this._ridingRef = hass.entities; this._ridingKey = eid; this._ridingId = ridingEntityOf(hass, eid); }
+      const st = this._ridingId && hass.states?.[this._ridingId];
+      const riding = st && (st.state === "on" || st.state === "off") ? st.state === "on" : null;
+      if (riding == null || riding === this._entRiding || !this._data || this._loading) return;
+      this._entRiding = riding;
+      if (riding !== !!this._data.state?.riding) this._load();
     }
     connectedCallback() { if (this._hass && !this._timer) this._load(); this._fitMap(); }
     disconnectedCallback() { clearTimeout(this._timer); this._timer = null; if (this._h) this._pause(); }
@@ -259,6 +284,7 @@
     }
     async _load() {
       clearTimeout(this._timer);
+      this._loading = true;
       try {
         const msg = { type: "gridhunt/card" };
         if (this._config.entry_id) msg.entry_id = this._config.entry_id;
@@ -267,6 +293,7 @@
       } catch (e) {
         this._error = e;
       }
+      this._loading = false;
       this._render();
       const poll = this._data?.state?.riding ? (this._data.state.pollSec || 20) : 60;
       if (this.isConnected) this._timer = setTimeout(() => this._load(), poll * 1000);
@@ -607,7 +634,7 @@
       else {
         const s = d.state || {}, exts = this._ext(), ctx = this._ctx();
         const title = this._config.title || exts.map((e) => e.title && e.title(d, ctx)).find(Boolean) || s.routeName || "Gridhunt";
-        const head = `<div class="head">${LOGO}<b class="grow">${esc(title)}</b>${s.riding ? `<span class="pill">${esc(t.live)}</span>` : ""}</div>`;
+        const head = `<div class="head"><span class="brand">${LOGO}<span class="bname">gridhunt</span></span><b class="grow htitle">${esc(title)}</b>${s.riding ? `<span class="pill">${esc(t.live)}</span>` : ""}</div>`;
         const extSections = exts.map((e) => (e.sections && e.sections(d, ctx)) || "").join("");
         if (s.riding) {
           const age = s.position ? s.position.ageSec : null;
@@ -636,7 +663,7 @@
                ${sel && this._route && !this._route.error ? `<div class="mapbox">${this._routeSvg(this._route)}</div>` : ""}`
             : `<div class="muted">${esc(t.noRoutes)}</div>`;
           // jeden wiersz: znak, „Teraz nikt nie jedzie”, liczniki (zawija się na wąskim ekranie)
-          body = `<div class="idlehead">${LOGO}<div class="idle" title="${esc(title)}">${esc(t.nobody)}</div>
+          body = `<div class="idlehead"><span class="brand">${LOGO}<span class="bname">gridhunt</span></span><div class="idle" title="${esc(title)}">${esc(t.nobody)}</div>
             <div class="stats inline">${this._stat(t.total, nf.format(st.tilesZ14 || 0))}${this._stat(t.square, (st.uber || 0) + "×" + (st.uber || 0))}${this._stat(t.year, "+" + (st.newThisYear || 0), "t")}${st.rides ? this._stat(t.rides, st.rides.count) : ""}</div></div>${last}
             ${tilesMap}
             ${extSections}<h3>${esc(t.routes)}</h3>${routeList}`;
@@ -667,8 +694,10 @@
     .mapbox{border-radius:12px;overflow:hidden;background:var(--secondary-background-color,rgba(127,127,127,.08));margin:8px 0}
     svg.map{display:block;width:100%;height:auto;max-height:min(55vh,420px)}svg.map.small{max-height:220px}
     .grid{stroke:var(--divider-color,rgba(127,127,127,.25));stroke-width:.6;fill:none}
-    .route{fill:none;stroke:var(--gh-accent);stroke-opacity:.45;stroke-width:6;stroke-linecap:round;stroke-linejoin:round}
-    .trail{fill:none;stroke:var(--gh-accent);stroke-width:4;stroke-linecap:round;stroke-linejoin:round}
+    .route{fill:none;stroke:var(--gh-route,#1e7a3a);stroke-width:4;stroke-dasharray:8 6;stroke-linejoin:round;paint-order:stroke}
+    :host([dark]) .route{stroke:var(--gh-route-dark,#4ade80)}
+    .trail{fill:none;stroke:var(--gh-track,#c026d3);stroke-width:4;stroke-linecap:round;stroke-linejoin:round}
+    :host([dark]) .trail{stroke:var(--gh-track-dark,#e879f9)}
     .own{fill:var(--gh-own);fill-opacity:.42;stroke:none}
     .sq{fill:none;stroke:var(--gh-square);stroke-width:3}.tgt{fill:none;stroke:var(--gh-target);stroke-width:3;stroke-dasharray:10 6}
     .sqlab{font:700 13px sans-serif;stroke:none}.sqlab.sq{fill:var(--gh-square)}.sqlab.tgt{fill:var(--gh-target)}
@@ -712,8 +741,8 @@
     h3{font-size:.8em;text-transform:uppercase;letter-spacing:.06em;color:var(--secondary-text-color);margin:14px 0 4px}
     .row{display:flex;align-items:center;gap:10px;padding:6px 0;border-bottom:1px solid var(--divider-color,rgba(127,127,127,.2))}.row:last-child{border-bottom:0}
     .dot{width:9px;height:9px;border-radius:50%;background:var(--gh-accent)}.dot.t{background:var(--gh-tile)}
-    .idlehead{display:flex;align-items:center;gap:12px 16px;flex-wrap:wrap}.idlehead .logo{width:32px;height:32px}
-    .idle{font-size:1.3em;font-weight:700;margin:0;flex:1 1 180px}.stats.inline{flex:2 1 360px;margin:0}.last{margin-bottom:6px}
+    .idlehead{display:flex;align-items:center;gap:12px 16px;flex-wrap:wrap}.brand{display:inline-flex;align-items:center;gap:10px;flex:none}.bname{font-family:Archivo,"Helvetica Neue",Helvetica,Arial,sans-serif;font-stretch:112%;font-size:1.6rem;font-weight:800;letter-spacing:-.02em;color:var(--primary-text-color,#111);line-height:1;white-space:nowrap}.idle .bname+*,.idle{}.htitle{display:block;min-width:0}.idlehead .logo,.head .logo{width:32px;height:32px}
+    .idle{font-size:1.15em;font-weight:600;margin:0;flex:1 1 180px;color:var(--secondary-text-color,#555)}.stats.inline{flex:2 1 360px;margin:0}.last{margin-bottom:6px}
     .chips{display:flex;gap:6px;flex-wrap:wrap}.chip{border:1px solid var(--divider-color,#ccc);background:none;color:inherit;border-radius:999px;padding:6px 12px;font:inherit;font-size:.85em;cursor:pointer}
     .chip.on{background:var(--gh-accent);border-color:var(--gh-accent);color:#fff}
     .pad{padding:8px 0}
@@ -756,7 +785,7 @@
     }
     return [...by.values()].sort((x, y) => x.name.localeCompare(y.name));
   }
-  const ghTile = (entity, name) => ({ type: "tile", entity, ...(name ? { name } : {}), grid_options: { columns: 6 } });
+  const ghTile = (entity, name, columns = 6) => ({ type: "tile", entity, ...(name ? { name } : {}), grid_options: { columns } });
   const ghHeading = (heading, icon) => ({ type: "heading", heading, heading_style: "title", icon });
   function strategyView(config, hass) {
     const t = tr(hass), accounts = strategyAccounts(hass, config?.device_id), many = accounts.length > 1;
@@ -768,12 +797,12 @@
       for (const k of ["tiles", "square"]) if (r[k]) badges.push({ type: "entity", entity: r[k], show_name: true });
       live.push(ghHeading(pre + t.sLive, "mdi:map-marker-path"));
       live.push({ type: "custom:gridhunt-card", map: "live-page", ...(many && a.entry_id ? { entry_id: a.entry_id } : {}), grid_options: { columns: "full" } });
-      if (r.position) live.push({ type: "map", entities: [{ entity: r.position }], hours_to_show: 12, default_zoom: 14, auto_fit: true, grid_options: { rows: 8 } });
+      if (r.position) live.push({ type: "map", title: t.sMapTitle, entities: [{ entity: r.position }], hours_to_show: 12, default_zoom: 14, auto_fit: true, grid_options: { columns: "full", rows: 8 } });
       sections.push({ type: "grid", column_span: 2, cards: live });
       for (const [k, n] of [["riding", "sRiding"], ["rideDistance", "sRideDistance"], ["done", "sDone"], ["left", "sLeft"], ["progress", "sProgress"], ["newRide", "sNewRide"]])
         if (r[k]) ride.push(ghTile(r[k], t[n]));
       for (const [k, n] of [["tiles", "sTiles"], ["square", "sSquare"], ["newYear", "sNewYear"], ["lastRide", "sLastRide"]]) if (r[k]) acct.push(ghTile(r[k], t[n]));
-      for (const e of a.extra) acct.push(ghTile(e));
+      for (const e of a.extra) acct.push(ghTile(e, null, 12)); // e.g. extension sensors: full width, own entity name
       const cards = [];
       if (ride.length) cards.push(ghHeading(pre + t.sRide, "mdi:bike-fast"), ...ride);
       if (acct.length) cards.push(ghHeading(pre + t.sAccount, "mdi:grid"), ...acct);
@@ -794,6 +823,182 @@
   if (!window.customStrategies.some((c) => c.type === "gridhunt" && c.strategyType === "dashboard")) {
     window.customStrategies.push({ type: "gridhunt", strategyType: "dashboard", name: "Gridhunt", description: I18N.en.sDesc, documentationURL: "https://github.com/gridhunt-app/home-assistant-gridhunt" });
   }
+
+  /* ---- Sidebar: icon set "gridhunt:mark" and panel element (panel_custom "gridhunt-panel", panel.py) ---- */
+  /** One-colour Gridhunt mark (tile, square, dashed target) in 24×24: the HA sidebar colours icons itself. */
+  const MARK_PATH = "M0.54 13.97L10.21 13.97L10.21 23.64L0.54 23.64ZM0.54 6.45L17.73 6.45L17.73 23.64L12.72 23.64L12.72 11.46L0.54 11.46ZM0.54 0.36L8.53 0.36L8.53 4.30L0.54 4.30ZM13.86 0.36L23.82 0.36L23.82 10.32L19.88 10.32L19.88 4.30L13.86 4.30ZM19.88 15.47L23.82 15.47L23.82 23.64L19.88 23.64Z";
+  window.customIconsets = window.customIconsets || {};
+  if (!window.customIconsets.gridhunt) {
+    window.customIconsets.gridhunt = async (name) => (name === "mark" || name === "logo" ? { path: MARK_PATH } : { path: "" });
+  }
+  const PANEL_CSS = `:host{display:block;min-height:100vh;background:var(--primary-background-color);color:var(--primary-text-color)}
+.bar{position:sticky;top:0;z-index:2;display:flex;align-items:center;gap:4px;height:var(--header-height,56px);padding:0 8px 0 4px;
+ padding-top:env(safe-area-inset-top);box-sizing:content-box;background:var(--app-header-background-color,var(--primary-color));
+ color:var(--app-header-text-color,#fff);border-bottom:var(--app-header-border-bottom,none)}
+.bar .title{flex:1;margin-left:12px;font-size:20px;font-weight:400;white-space:nowrap;overflow:hidden;text-overflow:ellipsis}
+.bar button{display:inline-flex;align-items:center;gap:6px;height:40px;min-width:40px;justify-content:center;padding:0 8px;border:0;border-radius:20px;
+ background:none;color:inherit;font:inherit;font-size:14px;cursor:pointer}
+.bar button:hover{background:rgba(127,127,127,.18)}
+.bar button[hidden]{display:none}
+.wrap{padding:8px 8px 32px;box-sizing:border-box}
+.sections{display:grid;grid-template-columns:repeat(var(--cols,1),minmax(0,1fr));gap:16px 16px;max-width:calc(var(--cols,1) * 500px);margin:0 auto}
+.section{display:grid;grid-template-columns:repeat(12,minmax(0,1fr));gap:8px;align-content:start}
+.cell{min-width:0}
+.badges{display:flex;flex-wrap:wrap;justify-content:center;gap:8px;margin:4px auto 16px;max-width:calc(var(--cols,1) * 500px)}
+.badges:empty{display:none}
+.badge{display:inline-flex;align-items:center;gap:8px;height:36px;padding:0 14px 0 10px;border-radius:18px;cursor:pointer;
+ background:var(--ha-card-background,var(--card-background-color,#fff));border:1px solid var(--divider-color,rgba(0,0,0,.12));
+ color:var(--primary-text-color);font:inherit;font-size:14px;line-height:1.1;text-align:left}
+.badge ha-icon,.badge ha-state-icon{--mdc-icon-size:18px;color:var(--state-icon-color,var(--secondary-text-color))}
+.badge.on ha-icon,.badge.on ha-state-icon{color:var(--green-color,#4caf50)}
+.badge .bn{font-size:10px;color:var(--secondary-text-color);display:block}
+.badge .bv{font-weight:500;display:block}`;
+  const span = (g) => (g?.columns === "full" ? 12 : Math.max(1, Math.min(12, Number(g?.columns) || 12)));
+  const ICON_MENU = "mdi:menu", ICON_COPY = "mdi:content-copy";
+  class GridhuntPanel extends HTMLElement {
+    constructor() {
+      super();
+      this.attachShadow({ mode: "open" });
+      this._cards = [];
+      this._key = null;
+      this._cols = 1;
+      this._build = 0;
+    }
+    set hass(h) { this._hass = h; this._update(); }
+    get hass() { return this._hass; }
+    set narrow(n) { this._narrow = n; this._bar(); }
+    get narrow() { return this._narrow; }
+    set panel(p) { this._panel = p; }
+    set route(r) { this._route = r; }
+    connectedCallback() {
+      if (!this._ro && window.ResizeObserver) {
+        this._ro = new ResizeObserver(() => this._layout());
+        this._ro.observe(this);
+      }
+      this._update();
+    }
+    disconnectedCallback() { this._ro?.disconnect(); this._ro = null; }
+    _skeleton() {
+      if (this.shadowRoot.querySelector(".bar")) return;
+      const t = tr(this._hass);
+      this.shadowRoot.innerHTML = `<style>${PANEL_CSS}</style><div class="bar"><button class="menu" title="${esc(t.pMenu)}" aria-label="${esc(t.pMenu)}"><ha-icon icon="${ICON_MENU}"></ha-icon></button>
+<div class="title">gridhunt</div><button class="copy" title="${esc(t.pCopy)}"><ha-icon icon="${ICON_COPY}"></ha-icon><span class="lbl">${esc(t.pCopy)}</span></button></div>
+<div class="wrap"><div class="badges"></div><div class="sections"></div></div>`;
+      this.shadowRoot.querySelector(".menu").addEventListener("click", () => this.dispatchEvent(new CustomEvent("hass-toggle-menu", { bubbles: true, composed: true })));
+      this.shadowRoot.querySelector(".copy").addEventListener("click", () => this._copy());
+    }
+    _bar() {
+      const r = this.shadowRoot, h = this._hass;
+      if (!r.querySelector(".bar")) return;
+      r.querySelector(".menu").hidden = !(this._narrow || h?.dockedSidebar === "always_hidden");
+      r.querySelector(".copy").hidden = !h?.user?.is_admin;
+      r.querySelector(".lbl").hidden = !!this._narrow;
+    }
+    _update() {
+      const h = this._hass;
+      if (!h || !this.isConnected) return;
+      this._skeleton();
+      this._bar();
+      // regenerate only when the registries or the language change (hass changes on every state update)
+      const lang = h.locale?.language || h.language;
+      if (this._src?.e !== h.entities || this._src?.d !== h.devices || this._src?.l !== lang || this._src?.s !== !!h.states) {
+        this._src = { e: h.entities, d: h.devices, l: lang, s: !!h.states };
+        const view = strategyView({}, h), key = JSON.stringify(view);
+        if (key !== this._key) { this._key = key; this._view = view; this._render(view); }
+      }
+      for (const c of this._cards) c.hass = h;
+      this._badges();
+    }
+    /** View badges (entity: icon, name, state) drawn by the panel; tap opens more-info like HA badges. */
+    _badges() {
+      const h = this._hass, box = this.shadowRoot.querySelector(".badges");
+      if (!box) return;
+      const list = (this._view?.badges || []).filter((b) => h.states?.[b.entity]);
+      const html = list.map((b) => {
+        const st = h.states[b.entity], dev = h.devices?.[h.entities?.[b.entity]?.device_id];
+        let name = String(st.attributes?.friendly_name || b.entity);
+        const dn = dev?.name_by_user || dev?.name;
+        if (dn && name.startsWith(dn + " ")) name = name.slice(dn.length + 1);
+        const value = h.formatEntityState ? h.formatEntityState(st) : st.state;
+        const on = b.color === "green" && st.state === "on";
+        const icon = customElements.get("ha-state-icon") ? `<ha-state-icon data-e="${esc(b.entity)}"></ha-state-icon>` : `<ha-icon icon="${esc(st.attributes?.icon || "mdi:grid")}"></ha-icon>`;
+        return `<button class="badge${on ? " on" : ""}" data-e="${esc(b.entity)}">${icon}<span>${b.show_name ? `<span class="bn">${esc(name)}</span>` : ""}<span class="bv">${esc(value)}</span></span></button>`;
+      }).join("");
+      if (html !== this._badgeHtml) {
+        this._badgeHtml = html;
+        box.innerHTML = html;
+        for (const el of box.querySelectorAll(".badge")) el.addEventListener("click", () =>
+          this.dispatchEvent(new CustomEvent("hass-more-info", { bubbles: true, composed: true, detail: { entityId: el.dataset.e } })));
+      }
+      for (const el of box.querySelectorAll("ha-state-icon")) { el.hass = h; el.stateObj = h.states[el.dataset.e]; }
+    }
+    _layout() {
+      const w = this.clientWidth || window.innerWidth, cols = Math.max(1, Math.min(3, Math.floor((w - 16) / 360)));
+      if (cols === this._cols && this._laid) return;
+      this._cols = cols; this._laid = true;
+      const box = this.shadowRoot.querySelector(".sections");
+      if (!box) return;
+      this.shadowRoot.querySelector(".wrap").style.setProperty("--cols", String(cols));
+      for (const s of box.children) s.style.gridColumn = `span ${Math.min(cols, Number(s.dataset.span) || 1)}`;
+    }
+    async _card(conf) {
+      const helpers = await (this._helpers ||= window.loadCardHelpers ? window.loadCardHelpers() : Promise.resolve(null));
+      let el;
+      if (helpers) el = await helpers.createCardElement(conf);
+      else { el = document.createElement(conf.type === "custom:gridhunt-card" ? "gridhunt-card" : "hui-error-card"); el.setConfig?.(conf); }
+      el.hass = this._hass;
+      return el;
+    }
+    async _render(view) {
+      const build = ++this._build, box = this.shadowRoot.querySelector(".sections");
+      const nodes = [], cards = [];
+      for (const sec of view.sections || []) {
+        const s = document.createElement("div");
+        s.className = "section";
+        s.dataset.span = String(sec.column_span || 1);
+        for (const conf of sec.cards || []) {
+          const cell = document.createElement("div");
+          cell.className = "cell";
+          cell.style.gridColumn = `span ${span(conf.grid_options)}`;
+          const el = await this._card(conf);
+          if (build !== this._build) return;
+          el.addEventListener("ll-rebuild", async (ev) => {
+            ev.stopPropagation();
+            const fresh = await this._card(conf);
+            const i = this._cards.indexOf(el);
+            if (i >= 0) this._cards[i] = fresh;
+            if (el.parentNode) el.parentNode.replaceChild(fresh, el);
+          }, { once: true });
+          cell.appendChild(el);
+          cards.push(el);
+          s.appendChild(cell);
+        }
+        nodes.push(s);
+      }
+      this._cards = cards;
+      box.replaceChildren(...nodes);
+      this._laid = false;
+      this._layout();
+    }
+    /** "Take control": a new storage dashboard with this view written out; the panel itself stays generated. */
+    async _copy() {
+      const h = this._hass, t = tr(h);
+      if (!h?.user?.is_admin || !window.confirm(t.pCopyAsk)) return;
+      try {
+        const list = await h.callWS({ type: "lovelace/dashboards/list" });
+        let path = "gridhunt-copy", n = 2;
+        while (list.some((d) => d.url_path === path)) path = `gridhunt-copy-${n++}`;
+        await h.callWS({ type: "lovelace/dashboards/create", url_path: path, title: n > 2 ? `gridhunt ${n - 1}` : "gridhunt", icon: "gridhunt:mark", show_in_sidebar: true, require_admin: false });
+        const view = strategyView({}, h);
+        await h.callWS({ type: "lovelace/config/save", url_path: path, config: { title: "gridhunt", views: [{ title: t.sView, path: "gridhunt", icon: "gridhunt:mark", ...view }] } });
+        history.pushState(null, "", `/${path}/gridhunt`);
+        window.dispatchEvent(new CustomEvent("location-changed", { detail: { replace: false } }));
+      } catch (e) {
+        window.alert(fmt(t.pCopyFail, { e: e?.message || e?.code || String(e) }));
+      }
+    }
+  }
+  if (!customElements.get("gridhunt-panel")) customElements.define("gridhunt-panel", GridhuntPanel);
   window.gridhuntCardExtensions = window.gridhuntCardExtensions || [];
   console.info(`%c GRIDHUNT-CARD %c ${VERSION} `, "background:#2447e0;color:#fff;font-weight:700", "");
 })();

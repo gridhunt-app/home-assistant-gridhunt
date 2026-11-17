@@ -45,6 +45,14 @@ Without it the integration falls back to polling and fires the same events a lit
 
 Polling: every 20 s while riding, every 60 s otherwise.
 
+Entity names: the device is called **Gridhunt**, so the entities are `binary_sensor.gridhunt_riding`,
+`sensor.gridhunt_tiles`, `device_tracker.gridhunt_position` and so on ("Gridhunt Riding", "Gridhunt Tiles"); your
+account name does not appear in them. With more than one Gridhunt account in Home Assistant the first one keeps
+"Gridhunt" and every next one is named "Gridhunt <account name>" (for example `sensor.gridhunt_jan_tiles`) so the
+ids do not collide. Updating from 0.1.12 or older renames the old ids (`sensor.<account>_tiles` to
+`sensor.gridhunt_tiles`) once, only those you have not renamed yourself and only when the new id is free. Update
+your own dashboards, automations and scripts that still use the old ids.
+
 ## Events
 
 Fired on the Home Assistant bus; use them as automation triggers.
@@ -90,6 +98,19 @@ views:
 
 With several Gridhunt accounts the view repeats the sections per account; add `device_id: <device id>` under `strategy`
 to limit it to one account. Missing entities are skipped.
+
+## Sidebar panel
+
+After setup the integration adds a **gridhunt** item with the Gridhunt mark to the Home Assistant sidebar (`/gridhunt`).
+It opens a ready-made view, generated from your entities: the Gridhunt card with the map, your position map, and the
+"Current ride" and "Account" sections, with Riding, Tiles and Square badges on top. Nothing to set up and nothing to edit:
+the view follows your entities. With several accounts there is one item showing all of them.
+
+- Turn it off: Settings > Devices & services > Gridhunt > Configure > "Show Gridhunt in the sidebar". The item disappears
+  at once, no restart. With several accounts the item stays while any account has the option on.
+- Want to edit it? Admins see "Editable copy" in the panel header: it creates a new dashboard (`/gridhunt-copy`) with the
+  view written out, which you can change like any dashboard ("take control"). The panel itself stays generated.
+- If another panel already uses `/gridhunt`, the item is not added (warning in the log).
 
 ## Privacy
 

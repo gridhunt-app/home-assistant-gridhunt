@@ -39,7 +39,8 @@
           "base_url": "Server address"
         },
         "data_description": {
-          "base_url": "Leave as is to use the Gridhunt service."
+          "base_url": "Leave as is to use the Gridhunt service.",
+          "token": "The token created in Gridhunt: Settings, Connections, Home Assistant."
         }
       }
     },
@@ -53,7 +54,8 @@
       "already_configured": "This account is already connected.",
       "invalid_auth": "This token is not valid or was revoked.",
       "cannot_connect": "Cannot connect to Gridhunt.",
-      "reauth_successful": "Reconnected successfully."
+      "reauth_successful": "Reconnected successfully.",
+      "wrong_account": "This token belongs to a different Gridhunt account. Use a token of the account you connected."
     }
   },
   "entity": {
@@ -67,13 +69,13 @@
         "name": "Route progress"
       },
       "distance_done_km": {
-        "name": "Distance done"
+        "name": "Along route"
       },
       "distance_left_km": {
-        "name": "Distance left"
+        "name": "Distance to finish"
       },
       "distance_km": {
-        "name": "Ride distance"
+        "name": "Distance ridden"
       },
       "new_tiles": {
         "name": "New tiles (this ride)"
@@ -107,6 +109,27 @@
           "description": "Gridhunt account to refresh. All accounts if empty."
         }
       }
+    }
+  },
+  "options": {
+    "step": {
+      "init": {
+        "title": "Gridhunt options",
+        "data": {
+          "show_panel": "Show Gridhunt in the sidebar"
+        },
+        "data_description": {
+          "show_panel": "Adds a Gridhunt item with a ready-made view (map card, current ride, account) to the Home Assistant sidebar. One item for all accounts: it stays while any account has this option on."
+        }
+      }
+    }
+  },
+  "exceptions": {
+    "no_account": {
+      "message": "No Gridhunt account is loaded."
+    },
+    "unknown_entry": {
+      "message": "Unknown entry_id."
     }
   }
 }

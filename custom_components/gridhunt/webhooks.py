@@ -10,12 +10,15 @@ from typing import Any
 
 from aiohttp import web
 from homeassistant.components import webhook as ha_webhook
-from homeassistant.core import HomeAssistant
+from homeassistant.core import HomeAssistant, callback
 from homeassistant.exceptions import HomeAssistantError
+from homeassistant.helpers.aiohttp_client import async_get_clientsession
 from homeassistant.helpers.network import NoURLAvailableError
 
 from .api import ApiError, AuthError, GridhuntClient, ScopeError
 from .const import (
+    CONF_BASE_URL,
+    CONF_TOKEN,
     CONF_CLOUDHOOK,
     CONF_WEBHOOK_SECRET,
     CONF_WEBHOOK_URL,
@@ -64,7 +67,8 @@ def sign(secret: str, body: bytes, timestamp: int | None = None) -> str:
 def async_register_handler(
     hass: HomeAssistant, entry: GridhuntConfigEntry, webhook_id: str
 ) -> None:
-    """Register the receiving endpoint for this entry."""
+    """Register the receiving endpoint for this entry (idempotent: replaces a leftover registration)."""
+    ha_webhook.async_unregister(hass, webhook_id)
 
     async def _handle(hass: HomeAssistant, _id: str, request: web.Request) -> web.Response:
         # Nabu Casa (cloudhook) podaje MockRequest bez read(); text() mają oba typy żądań, JSON jest w UTF-8
@@ -118,6 +122,9 @@ async def async_register_remote(
         LOGGER.info("No external https URL for a webhook; relying on polling")
         return False
     url, is_cloud = resolved
+    if entry.data.get(CONF_WEBHOOK_SECRET) and entry.data.get(CONF_WEBHOOK_URL) == url:
+        # Gridhunt already knows this address (unload does not delete it): no PUT, no new secret
+        return True
     try:
         result: dict[str, Any] = await client.put_webhook(url)
     except (ApiError, ScopeError, AuthError) as err:
@@ -138,11 +145,17 @@ async def async_register_remote(
     return True
 
 
-async def async_unregister(
-    hass: HomeAssistant, client: GridhuntClient, webhook_id: str
-) -> None:
-    """Remove the local handler and (best effort) the server-side URL."""
+@callback
+def async_unregister_local(hass: HomeAssistant, webhook_id: str) -> None:
+    """Unload: drop only the local handler. The server-side URL stays so no events are lost across reloads."""
     ha_webhook.async_unregister(hass, webhook_id)
+
+
+async def async_delete_remote(hass: HomeAssistant, entry: GridhuntConfigEntry) -> None:
+    """Entry removed for good: delete the URL on the Gridhunt server (best effort)."""
+    client = GridhuntClient(
+        async_get_clientsession(hass), entry.data[CONF_BASE_URL], entry.data[CONF_TOKEN]
+    )
     try:
         await client.delete_webhook()
     except (ApiError, ScopeError, AuthError) as err:

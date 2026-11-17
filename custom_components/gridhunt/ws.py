@@ -9,7 +9,7 @@ from homeassistant.components import websocket_api
 from homeassistant.core import HomeAssistant
 
 from .api import ApiError, AuthError, ScopeError
-from .const import DOMAIN
+from .const import DOMAIN, ROUTE_ID_RE
 from .coordinator import GridhuntCoordinator
 
 
@@ -55,7 +55,7 @@ async def ws_card(hass: HomeAssistant, connection, msg: dict[str, Any]) -> None:
 @websocket_api.websocket_command(
     {
         vol.Required("type"): "gridhunt/route",
-        vol.Required("route_id"): str,
+        vol.Required("route_id"): vol.All(str, vol.Match(ROUTE_ID_RE)),
         vol.Optional("entry_id"): str,
     }
 )

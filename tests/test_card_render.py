@@ -166,14 +166,14 @@ def test_strategy_view_layout_pl():
     assert live["cards"][1]["map"] == "live-page" and live["cards"][1]["grid_options"] == {"columns": "full"}
     m = live["cards"][2]
     assert m["entities"] == [{"entity": "device_tracker.gh_position"}] and m["hours_to_show"] == 12 and m["default_zoom"] == 14 and m["auto_fit"] is True
-    assert m["grid_options"] == {"rows": 8}
+    assert m["grid_options"] == {"columns": "full", "rows": 8} and m["title"] == "Moja pozycja (12 h)"
     cards = rest["cards"]
     heads = [c["heading"] for c in cards if c["type"] == "heading"]
     assert heads == ["Bieżąca jazda", "Konto"]
     names = [c["name"] for c in cards if c["type"] == "tile" and "name" in c]
-    assert names == ["Jadę", "Dystans", "Przejechane", "Do mety", "Postęp trasy", "Nowe kafle", "Kafle", "Kwadrat", "Nowe w tym roku", "Ostatnia jazda"]
-    assert all(c["grid_options"] == {"columns": 6} for c in cards if c["type"] == "tile")
-    assert cards[-1] == {"type": "tile", "entity": "sensor.gh_odd", "grid_options": {"columns": 6}}  # unknown account entity, no name override
+    assert names == ["Jadę", "Przejechane", "Na trasie", "Do mety", "Postęp trasy", "Nowe kafle", "Kafle", "Kwadrat", "Nowe w tym roku", "Ostatnia jazda"]
+    assert all(c["grid_options"] == {"columns": 6} for c in cards[:-1] if c["type"] == "tile")
+    assert cards[-1] == {"type": "tile", "entity": "sensor.gh_odd", "grid_options": {"columns": 12}}  # unknown account entity, no name override
     assert "sensor.other" not in str(v)
 
 
@@ -186,14 +186,119 @@ def test_strategy_view_skips_missing_entities_and_english():
     assert live["cards"][0]["heading"] == "Live ride"
     ents = [c["entity"] for c in rest["cards"] if c["type"] == "tile"]
     assert "binary_sensor.gh_riding" not in ents and "sensor.gh_last_ride" not in ents
-    assert [c["name"] for c in rest["cards"] if c["type"] == "tile"][0] == "Distance"
+    assert [c["name"] for c in rest["cards"] if c["type"] == "tile"][0] == "Distance ridden"
 
 
 def test_strategy_dashboard_and_empty():
     pytest.importorskip("playwright.sync_api")
     d = _generate("dashboard", _strategy_hass())
-    assert d["views"] == [{"title": "Gridhunt", "path": "gridhunt", "icon": "mdi:bike", "strategy": {"type": "custom:gridhunt"}}]
+    assert d["views"] == [{"title": "gridhunt", "path": "gridhunt", "icon": "mdi:bike", "strategy": {"type": "custom:gridhunt"}}]
     v = _generate("view", {"entities": {}, "states": {}, "locale": {"language": "en"}})
     assert v["sections"][0]["cards"][0]["type"] == "markdown"
     from .card.harness import evaluate_card
     assert evaluate_card("window.customStrategies.filter(c => c.type === 'gridhunt').map(c => c.strategyType)") == ["dashboard"]
+
+
+# ---- sidebar panel (gridhunt-panel) and icon set gridhunt:mark ----
+def _panel_page(hass, admin=True, width=1400):
+    import json
+    from playwright.sync_api import sync_playwright
+    from .card.harness import WWW
+
+    h = dict(hass, user={"is_admin": admin})
+    html = ("<!doctype html><html><body style='margin:0'><script>window.__ws=[];window.loadCardHelpers=async()=>({createCardElement:async(c)=>{"
+            "const e=document.createElement('div');e.className='fake';e.dataset.type=c.type;e.textContent=c.heading||c.name||c.entity||'';return e;}});</script><script>"
+            + (WWW / "gridhunt-card.js").read_text()
+            + "</script><script>const p=document.createElement('gridhunt-panel');document.body.appendChild(p);p.narrow=false;"
+            + f"p.hass=Object.assign({json.dumps(h)},{{callWS:async(m)=>{{window.__ws.push(m);return m.type==='lovelace/dashboards/list'?[{{url_path:'gridhunt-copy'}}]:null;}}}});window.confirm=()=>true;</script></body></html>")
+    with sync_playwright() as pw_:
+        b = pw_.chromium.launch()
+        pg = b.new_page(viewport={"width": width, "height": 900})
+        errors: list[str] = []
+        pg.on("pageerror", lambda e: errors.append(str(e)))
+        pg.set_content(html)
+        pg.wait_for_timeout(300)
+        out = pg.evaluate("""(() => { const r = document.querySelector('gridhunt-panel').shadowRoot;
+          return { title: r.querySelector('.bar .title').textContent, copyHidden: r.querySelector('.copy').hidden,
+            badges: [...r.querySelectorAll('.badge')].map(b => b.dataset.e),
+            sections: [...r.querySelectorAll('.section')].map(s => ({ col: s.style.gridColumn,
+              cards: [...s.querySelectorAll('.fake')].map(c => [c.dataset.type, c.textContent]) })) }; })()""")
+        if not admin:
+            out["ws"] = []
+        else:
+            pg.evaluate("document.querySelector('gridhunt-panel').shadowRoot.querySelector('.copy').click()")
+            pg.wait_for_timeout(200)
+            out["ws"] = pg.evaluate("window.__ws")
+        out["icon"] = pg.evaluate("window.customIconsets.gridhunt('mark').then(i => i.path)")
+        b.close()
+    out["errors"] = errors
+    return out
+
+
+def test_panel_renders_strategy_layout_and_copy():
+    pytest.importorskip("playwright.sync_api")
+    r = _panel_page(_strategy_hass())
+    assert not r["errors"], r["errors"]
+    assert r["title"] == "gridhunt" and r["copyHidden"] is False
+    assert r["badges"] == ["binary_sensor.gh_riding", "sensor.gh_tiles_total", "sensor.gh_square"]
+    live, rest = r["sections"]
+    assert live["col"] == "span 2" and rest["col"] == "span 1"
+    assert [c[0] for c in live["cards"]] == ["heading", "custom:gridhunt-card", "map"]
+    names = [c[1] for c in rest["cards"]]
+    assert names[:7] == ["Bieżąca jazda", "Jadę", "Przejechane", "Na trasie", "Do mety", "Postęp trasy", "Nowe kafle"]
+    assert names[7:12] == ["Konto", "Kafle", "Kwadrat", "Nowe w tym roku", "Ostatnia jazda"]
+    assert r["icon"].startswith("M0.54 ")
+    create = [m for m in r["ws"] if m["type"] == "lovelace/dashboards/create"][0]
+    assert create["url_path"] == "gridhunt-copy-2" and create["icon"] == "gridhunt:mark"
+    save = [m for m in r["ws"] if m["type"] == "lovelace/config/save"][0]
+    assert save["url_path"] == "gridhunt-copy-2" and save["config"]["views"][0]["type"] == "sections"
+
+
+def test_panel_non_admin_no_copy_and_narrow_one_column():
+    pytest.importorskip("playwright.sync_api")
+    r = _panel_page(_strategy_hass(lang="en"), admin=False, width=420)
+    assert not r["errors"], r["errors"]
+    assert r["copyHidden"] is True
+    assert [s["col"] for s in r["sections"]] == ["span 1", "span 1"]
+    assert r["sections"][0]["cards"][0][1] == "Live ride"
+
+
+def test_switches_to_live_when_riding_entity_turns_on():
+    """Regression 16.11.2026: binary_sensor riding = on, card still "nobody is riding" until its 60 s idle poll."""
+    import json
+    from playwright.sync_api import sync_playwright
+    from .card.harness import WWW
+
+    idle, riding = payload(STATE_IDLE), payload(STATE_RIDING, copy.deepcopy(LIVE))
+    reg = {"binary_sensor.gridhunt_riding": {"entity_id": "binary_sensor.gridhunt_riding", "platform": "gridhunt", "translation_key": "riding", "device_id": "d1"}}
+    devices = {"d1": {"name": "Gridhunt", "config_entries": ["e1"]}}
+    html = "<!doctype html><html><body><gridhunt-card id='c'></gridhunt-card><script>" + (WWW / "gridhunt-card.js").read_text() + "</script></body></html>"
+    with sync_playwright() as p:
+        b = p.chromium.launch()
+        pg = b.new_page()
+        pg.set_content(html)
+        pg.evaluate(f"""(() => {{
+          window.__p = {json.dumps(idle)}; window.__n = 0;
+          const ws = async (m) => {{ if (m.type === "gridhunt/card") window.__n++; else (window.__other = window.__other || []).push(m.type); return window.__p; }};
+          window.__mk = (st) => ({{ locale: {{ language: "pl" }}, language: "pl", entities: {json.dumps(reg)}, devices: {json.dumps(devices)},
+            states: {{ "binary_sensor.gridhunt_riding": {{ state: st }} }}, callWS: ws }});
+          const el = document.getElementById("c"); el.setConfig({{ map: "svg" }}); el.hass = window.__mk("off");
+        }})()""")
+        pg.wait_for_timeout(300)
+        text = lambda: pg.evaluate("document.getElementById('c').shadowRoot.textContent")
+        assert "Teraz nikt nie jedzie" in text()
+        # unrelated state change: no extra request
+        pg.evaluate("document.getElementById('c').hass = window.__mk('off')")
+        pg.wait_for_timeout(100)
+        assert pg.evaluate("window.__n") == 1
+        # the ride starts (webhook -> entity on): the card reloads at once
+        pg.evaluate(f"window.__p = {json.dumps(riding)}; document.getElementById('c').hass = window.__mk('on')")
+        pg.wait_for_timeout(300)
+        assert "NA ŻYWO" in text() and "Teraz nikt nie jedzie" not in text()
+        assert pg.evaluate("window.__n") == 2
+        # further hass updates with the same entity state: still one request per change
+        for _ in range(3):
+            pg.evaluate("document.getElementById('c').hass = window.__mk('on')")
+        pg.wait_for_timeout(100)
+        assert pg.evaluate("window.__n") == 2
+        b.close()

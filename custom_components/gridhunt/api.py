@@ -3,6 +3,7 @@
 from __future__ import annotations
 
 from typing import Any
+from urllib.parse import quote
 
 import aiohttp
 
@@ -36,6 +37,12 @@ class ApiError(GridhuntError):
 
 class NotFoundError(ApiError):
     """404 on an endpoint where it does not mean a bad token."""
+
+
+def account_id_of(me: dict[str, Any]) -> str | None:
+    """Stable opaque account key from /api/ha/me (``accountKey``), None on servers that do not send it yet."""
+    value = me.get("accountKey") if isinstance(me, dict) else None
+    return value if isinstance(value, str) and value else None
 
 
 class GridhuntClient:
@@ -112,7 +119,7 @@ class GridhuntClient:
 
     async def route(self, route_id: str) -> dict[str, Any]:
         return (
-            await self.request("GET", f"/api/ha/routes/{route_id}", auth_404=False) or {}
+            await self.request("GET", f"/api/ha/routes/{quote(route_id, safe='')}", auth_404=False) or {}
         )
 
     # --- webhook -------------------------------------------------------------

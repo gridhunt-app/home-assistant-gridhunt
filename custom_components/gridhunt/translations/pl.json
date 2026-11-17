@@ -39,7 +39,8 @@
           "base_url": "Adres serwera"
         },
         "data_description": {
-          "base_url": "Zostaw bez zmian, aby korzystać z serwisu Gridhunt."
+          "base_url": "Zostaw bez zmian, aby korzystać z serwisu Gridhunt.",
+          "token": "Token utworzony w Gridhunt: Ustawienia, Połączenia, Home Assistant."
         }
       }
     },
@@ -53,7 +54,8 @@
       "already_configured": "To konto jest już połączone.",
       "invalid_auth": "Token jest nieprawidłowy albo został odwołany.",
       "cannot_connect": "Nie można połączyć się z Gridhunt.",
-      "reauth_successful": "Połączono ponownie."
+      "reauth_successful": "Połączono ponownie.",
+      "wrong_account": "Ten token należy do innego konta Gridhunt. Użyj tokenu konta, które było połączone."
     }
   },
   "entity": {
@@ -67,13 +69,13 @@
         "name": "Postęp trasy"
       },
       "distance_done_km": {
-        "name": "Przejechane"
+        "name": "Na trasie"
       },
       "distance_left_km": {
         "name": "Do mety"
       },
       "distance_km": {
-        "name": "Dystans jazdy"
+        "name": "Przejechane"
       },
       "new_tiles": {
         "name": "Nowe kafle (ta jazda)"
@@ -107,6 +109,27 @@
           "description": "Konto Gridhunt do odświeżenia. Puste = wszystkie."
         }
       }
+    }
+  },
+  "options": {
+    "step": {
+      "init": {
+        "title": "Opcje Gridhunt",
+        "data": {
+          "show_panel": "Pokaż Gridhunt w menu bocznym"
+        },
+        "data_description": {
+          "show_panel": "Dodaje do menu bocznego Home Assistant pozycję Gridhunt z gotowym widokiem (karta z mapą, bieżąca jazda, konto). Jedna pozycja dla wszystkich kont: zostaje, dopóki choć jedno konto ma tę opcję włączoną."
+        }
+      }
+    }
+  },
+  "exceptions": {
+    "no_account": {
+      "message": "Żadne konto Gridhunt nie jest załadowane."
+    },
+    "unknown_entry": {
+      "message": "Nieznany entry_id."
     }
   }
 }

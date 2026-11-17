@@ -4,10 +4,11 @@
   "after_dependencies": ["cloud"],
   "codeowners": ["@gridhunt-app"],
   "config_flow": true,
-  "dependencies": ["http", "webhook", "frontend", "websocket_api"],
+  "dependencies": ["frontend", "http", "panel_custom", "webhook", "websocket_api"],
   "documentation": "https://github.com/gridhunt-app/home-assistant-gridhunt",
+  "integration_type": "service",
   "iot_class": "cloud_polling",
   "issue_tracker": "https://github.com/gridhunt-app/home-assistant-gridhunt/issues",
   "requirements": [],
-  "version": "0.1.9"
+  "version": "0.1.18"
 }

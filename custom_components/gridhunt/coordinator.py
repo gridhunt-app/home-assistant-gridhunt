@@ -17,6 +17,8 @@ from homeassistant.helpers.update_coordinator import DataUpdateCoordinator, Upda
 
 from .api import ApiError, AuthError, GridhuntClient, ScopeError
 from .const import (
+    CONF_WEBHOOK_SECRET,
+    CONF_WEBHOOK_URL,
     DOMAIN,
     EVENT_NEW_SQUARE,
     EVENT_RIDE_FINISHED,
@@ -27,6 +29,7 @@ from .const import (
     ME_INTERVAL,
     POLL_IDLE,
     POLL_RIDING,
+    POLL_RIDING_PUSH,
     RETRY_INTERVAL,
     ROUTES_INTERVAL,
     STATS_INTERVAL,
@@ -109,6 +112,12 @@ class GridhuntCoordinator(DataUpdateCoordinator[GridhuntData]):
         self._prev_state: dict[str, Any] | None = None
         self._fired: OrderedDict[str, None] = OrderedDict()
 
+    @property
+    def push_active(self) -> bool:
+        """True when Gridhunt has our webhook (url and secret stored), so events arrive by push."""
+        data = self.config_entry.data
+        return bool(data.get(CONF_WEBHOOK_SECRET) and data.get(CONF_WEBHOOK_URL))
+
     # ------------------------------------------------------------------ helpers
     def _due(self, key: str, interval: float) -> bool:
         now = time.monotonic()
@@ -189,7 +198,9 @@ class GridhuntCoordinator(DataUpdateCoordinator[GridhuntData]):
         if prev is not None:
             self._detect_transitions(prev, state)
 
-        self.update_interval = timedelta(seconds=POLL_RIDING if riding else POLL_IDLE)
+        self.update_interval = timedelta(
+            seconds=(POLL_RIDING_PUSH if self.push_active else POLL_RIDING) if riding else POLL_IDLE
+        )
         return GridhuntData(
             me=self._me,
             state=state,

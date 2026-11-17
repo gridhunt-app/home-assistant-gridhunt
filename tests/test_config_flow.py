@@ -116,5 +116,5 @@ async def test_reauth_on_404(hass, aioclient_mock):
     assert result["type"] is FlowResultType.ABORT
     assert result["reason"] == "reauth_successful"
     assert entry.data[CONF_TOKEN] == new_token
-    assert entry.unique_id == unique_id_for(new_token)
+    assert entry.unique_id == "abc123"  # server without account id: unique_id untouched
     await hass.async_block_till_done()

@@ -21,7 +21,7 @@ const el = document.getElementById("c");
 el.setConfig(%(config)s);
 el.hass = { locale: { language: "%(lang)s" }, language: "%(lang)s",
   callWS: async (m) => m.type === "gridhunt/card" ? payload : routes[m.route_id],
-  callService: async (d, s, data) => { window.__calls.push([d, s, data]); } };
+  callService: async (d, s, data) => { window.__calls.push([d, s, data]); const r = %(svc)s; if (r && r.error) throw new Error(r.error); return r; } };
 </script></body></html>"""
 
 THEMES = {
@@ -31,14 +31,15 @@ THEMES = {
 
 
 def render(payload: dict[str, Any], *, extra: bool, routes: dict[str, Any] | None = None, lang: str = "pl", theme: str = "light",
-           width: int = 520, config: dict[str, Any] | None = None, shot: str | None = None, actions=None) -> dict[str, Any]:
+           width: int = 520, config: dict[str, Any] | None = None, shot: str | None = None, actions=None,
+           svc: dict[str, Any] | None = None) -> dict[str, Any]:
     from playwright.sync_api import sync_playwright
 
     # extension scripts (gridhunt-card-*.js) exist only in some builds
     files = ["gridhunt-card.js"] + (sorted(f.name for f in WWW.glob("gridhunt-card-*.js")) if extra else [])
     scripts = "".join(f"<script>{(WWW / f).read_text()}</script>" for f in files)
     html = PAGE % {**THEMES[theme], "width": width, "scripts": scripts, "payload": json.dumps(payload), "routes": json.dumps(routes or {}),
-                   "config": json.dumps(config or {"map": "svg"}), "lang": lang}
+                   "config": json.dumps(config or {"map": "svg"}), "lang": lang, "svc": json.dumps(svc)}
     with sync_playwright() as p:
         b = p.chromium.launch()
         pg = b.new_page(viewport={"width": width + 32, "height": 900}, color_scheme=theme)
